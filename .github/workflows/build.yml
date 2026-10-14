@@ -1,4 +1,4 @@
-name: Build APK v6.3
+name: Build APK v6.4
 
 on:
   push:
@@ -39,14 +39,13 @@ jobs:
         X1
 
         cat > build.gradle << 'X2'
-        plugins { id 'com.android.application' version '8.3.0' apply false }
+        plugins { id 'com.android.application' version '8.7.0' apply false }
         X2
 
         cat > gradle.properties << 'X3'
         org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
         android.useAndroidX=true
         android.nonTransitiveRClass=true
-        org.gradle.daemon=false
         X3
 
         cat > app/build.gradle << 'X4'
@@ -58,8 +57,8 @@ jobs:
                 applicationId "com.vanta.pubgtools"
                 minSdk 24
                 targetSdk 34
-                versionCode 12
-                versionName "6.3"
+                versionCode 13
+                versionName "6.4"
             }
             buildTypes { release { minifyEnabled false } }
             compileOptions {
@@ -557,7 +556,7 @@ jobs:
             }
 
             private void buildHome() {
-                addHeader("PUBG Tools Pro", "v6.3 · Shizuku");
+                addHeader("PUBG Tools Pro", "v6.4 · AGP 8.7");
 
                 CardView mon = makeCard();
                 LinearLayout mi = makeCardInner();
@@ -1064,7 +1063,7 @@ jobs:
                 CardView abt = makeCard();
                 LinearLayout abi = makeCardInner();
                 addTitle(abi, "ℹ حول التطبيق");
-                addRow(abi, "النسخة", "6.3");
+                addRow(abi, "النسخة", "6.4");
                 addRow(abi, "المطور", "VANTA for WORM");
                 abt.addView(abi);
                 contentArea.addView(abt);
@@ -1323,27 +1322,19 @@ jobs:
         }
         XD
 
-        echo "=== Files created ==="
-        ls -la
+        echo "=== FILES CREATED ==="
         ls -la app/
-
-    - name: Setup Gradle 8.7 wrapper
-      run: |
-        cd $GITHUB_WORKSPACE
-        gradle wrapper --gradle-version 8.7 --distribution-type bin 2>&1 | tail -20
-        ls -la gradlew gradle/wrapper/ 2>&1
 
     - name: Build APK
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        chmod +x gradlew
-        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log | tail -100
+        gradle assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log | tail -120
         echo ""
         echo "=== CHECK FOR APK ==="
         find . -name "*.apk" -type f 2>/dev/null
         echo ""
         echo "=== BUILD LOG TAIL ==="
-        tail -80 build.log
+        tail -100 build.log
 
     - name: Upload APK
       if: always()

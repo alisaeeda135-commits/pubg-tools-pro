@@ -1,4 +1,4 @@
-name: Build APK v6.2
+name: Build APK v6.3
 
 on:
   push:
@@ -46,6 +46,7 @@ jobs:
         org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
         android.useAndroidX=true
         android.nonTransitiveRClass=true
+        org.gradle.daemon=false
         X3
 
         cat > app/build.gradle << 'X4'
@@ -57,8 +58,8 @@ jobs:
                 applicationId "com.vanta.pubgtools"
                 minSdk 24
                 targetSdk 34
-                versionCode 11
-                versionName "6.2"
+                versionCode 12
+                versionName "6.3"
             }
             buildTypes { release { minifyEnabled false } }
             compileOptions {
@@ -333,7 +334,7 @@ jobs:
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
                             refreshShizukuStatus();
-                            toast("Shizuku UserService متصل ✓");
+                            toast("Shizuku UserService متصل");
                         }
                     });
                 }
@@ -399,7 +400,6 @@ jobs:
 
                 setContentView(main);
 
-                // Shizuku UserServiceArgs
                 try {
                     userServiceArgs = new Shizuku.UserServiceArgs(
                         new ComponentName(getPackageName(), UserService.class.getName()))
@@ -475,7 +475,7 @@ jobs:
                         shizukuStatus.setText("✓ متصل (uid=" + uid + ")");
                         shizukuStatus.setTextColor(Color.parseColor("#4CAF50"));
                     } else if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                        shizukuStatus.setText("⏳ الصلاحيات ممنوحة — ربط...");
+                        shizukuStatus.setText("⏳ جارٍ الربط...");
                         shizukuStatus.setTextColor(COLOR_PRIMARY);
                         bindUserService();
                     } else {
@@ -557,7 +557,7 @@ jobs:
             }
 
             private void buildHome() {
-                addHeader("PUBG Tools Pro", "v6.2 · Shizuku + AIDL");
+                addHeader("PUBG Tools Pro", "v6.3 · Shizuku");
 
                 CardView mon = makeCard();
                 LinearLayout mi = makeCardInner();
@@ -748,7 +748,6 @@ jobs:
                                 .compareToIgnoreCase(p.getApplicationLabel(b).toString());
                     }
                 });
-
                 Set<String> saved = prefs.getStringSet("kill_apps", new HashSet<String>());
 
                 ScrollView sv = new ScrollView(this);
@@ -1065,7 +1064,7 @@ jobs:
                 CardView abt = makeCard();
                 LinearLayout abi = makeCardInner();
                 addTitle(abi, "ℹ حول التطبيق");
-                addRow(abi, "النسخة", "6.2");
+                addRow(abi, "النسخة", "6.3");
                 addRow(abi, "المطور", "VANTA for WORM");
                 abt.addView(abi);
                 contentArea.addView(abt);
@@ -1324,19 +1323,27 @@ jobs:
         }
         XD
 
-        echo "=== DONE ==="
-        find . -type f -not -path './.git/*' | sort
+        echo "=== Files created ==="
+        ls -la
+        ls -la app/
+
+    - name: Setup Gradle 8.7 wrapper
+      run: |
+        cd $GITHUB_WORKSPACE
+        gradle wrapper --gradle-version 8.7 --distribution-type bin 2>&1 | tail -20
+        ls -la gradlew gradle/wrapper/ 2>&1
 
     - name: Build APK
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        gradle assembleDebug --no-daemon 2>&1 | tee build.log | tail -100
+        chmod +x gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log | tail -100
         echo ""
         echo "=== CHECK FOR APK ==="
-        find . -name "*.apk" -type f
+        find . -name "*.apk" -type f 2>/dev/null
         echo ""
         echo "=== BUILD LOG TAIL ==="
-        tail -50 build.log
+        tail -80 build.log
 
     - name: Upload APK
       if: always()

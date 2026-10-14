@@ -1,0 +1,805 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Create files
+      run: |
+        mkdir -p app/src/main/java/com/vanta/pubgtools
+        mkdir -p app/src/main/res/values
+        mkdir -p app/src/main/res/drawable
+        mkdir -p app/src/main/res/mipmap-anydpi-v26
+        for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do mkdir -p app/src/main/res/mipmap-$d; done
+
+        cat > settings.gradle << 'X1'
+        pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+        dependencyResolutionManagement {
+            repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+            repositories { google(); mavenCentral() }
+        }
+        rootProject.name = "PUBGToolsPro"
+        include ':app'
+        X1
+
+        cat > build.gradle << 'X2'
+        plugins { id 'com.android.application' version '8.3.0' apply false }
+        X2
+
+        cat > gradle.properties << 'X3'
+        org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+        android.useAndroidX=true
+        android.nonTransitiveRClass=true
+        X3
+
+        cat > app/build.gradle << 'X4'
+        plugins { id 'com.android.application' }
+        android {
+            namespace 'com.vanta.pubgtools'
+            compileSdk 34
+            defaultConfig {
+                applicationId "com.vanta.pubgtools"
+                minSdk 24
+                targetSdk 34
+                versionCode 1
+                versionName "1.0"
+            }
+            buildTypes { release { minifyEnabled false } }
+            compileOptions {
+                sourceCompatibility JavaVersion.VERSION_17
+                targetCompatibility JavaVersion.VERSION_17
+            }
+        }
+        dependencies {
+            implementation 'androidx.appcompat:appcompat:1.6.1'
+            implementation 'com.google.android.material:material:1.11.0'
+            implementation 'androidx.cardview:cardview:1.0.0'
+        }
+        X4
+
+        cat > app/src/main/AndroidManifest.xml << 'X5'
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+            <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+            <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+            <application
+                android:allowBackup="true"
+                android:icon="@mipmap/ic_launcher"
+                android:label="@string/app_name"
+                android:supportsRtl="true"
+                android:theme="@style/AppTheme">
+                <activity android:name=".MainActivity" android:exported="true">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        X5
+
+        cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'X6'
+        <?xml version="1.0" encoding="utf-8"?>
+        <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+            <background android:drawable="@drawable/ic_launcher_background" />
+            <foreground android:drawable="@drawable/ic_launcher_foreground" />
+        </adaptive-icon>
+        X6
+        cp app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
+
+        cat > app/src/main/res/drawable/ic_launcher_background.xml << 'X7'
+        <?xml version="1.0" encoding="utf-8"?>
+        <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+            <gradient android:angle="135" android:startColor="#0D0D0D"
+                android:centerColor="#1A1A1A" android:endColor="#2A1500" android:type="linear" />
+        </shape>
+        X7
+
+        cat > app/src/main/res/drawable/ic_launcher_foreground.xml << 'X8'
+        <?xml version="1.0" encoding="utf-8"?>
+        <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="108dp" android:height="108dp"
+            android:viewportWidth="108" android:viewportHeight="108">
+            <path android:fillColor="#00000000" android:strokeColor="#FF6B00" android:strokeWidth="2.5"
+                android:pathData="M54,22 L78,32 L78,54 C78,68 66,80 54,86 C42,80 30,68 30,54 L30,32 Z" />
+            <path android:fillColor="#1A0D00" android:strokeColor="#FFA726" android:strokeWidth="1.2"
+                android:pathData="M54,28 L72,36 L72,54 C72,65 63,74 54,79 C45,74 36,65 36,54 L36,36 Z" />
+            <path android:fillColor="#00000000" android:strokeColor="#FF6B00" android:strokeWidth="2"
+                android:pathData="M54,42 m-10,0 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0" />
+            <path android:fillColor="#FFA726" android:pathData="M54,40 m-2,0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0" />
+        </vector>
+        X8
+
+        for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+          cat > app/src/main/res/mipmap-$d/ic_launcher.xml << 'X9'
+        <?xml version="1.0" encoding="utf-8"?>
+        <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+            <item android:drawable="@drawable/ic_launcher_background" />
+            <item android:drawable="@drawable/ic_launcher_foreground" />
+        </layer-list>
+        X9
+          cp app/src/main/res/mipmap-$d/ic_launcher.xml app/src/main/res/mipmap-$d/ic_launcher_round.xml
+        done
+
+        cat > app/src/main/res/values/colors.xml << 'XA'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <color name="primary">#FF6B00</color>
+            <color name="primary_dark">#E55A00</color>
+            <color name="bg_dark">#0D0D0D</color>
+            <color name="bg_card">#1A1A1A</color>
+        </resources>
+        XA
+
+        cat > app/src/main/res/values/strings.xml << 'XB'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <string name="app_name">PUBG Tools Pro</string>
+        </resources>
+        XB
+
+        cat > app/src/main/res/values/themes.xml << 'XC'
+        <?xml version="1.0" encoding="utf-8"?>
+        <resources>
+            <style name="AppTheme" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+                <item name="colorPrimary">@color/primary</item>
+                <item name="colorPrimaryDark">@color/primary_dark</item>
+                <item name="android:windowBackground">@color/bg_dark</item>
+                <item name="android:statusBarColor">@color/bg_dark</item>
+                <item name="android:navigationBarColor">@color/bg_dark</item>
+            </style>
+        </resources>
+        XC
+
+        cat > app/src/main/java/com/vanta/pubgtools/MainActivity.java << 'XD'
+        package com.vanta.pubgtools;
+
+        import android.app.ActivityManager;
+        import android.content.ClipData;
+        import android.content.ClipboardManager;
+        import android.content.Context;
+        import android.content.pm.ApplicationInfo;
+        import android.content.pm.PackageManager;
+        import android.graphics.Color;
+        import android.graphics.Typeface;
+        import android.graphics.drawable.GradientDrawable;
+        import android.net.ConnectivityManager;
+        import android.net.NetworkInfo;
+        import android.net.wifi.WifiInfo;
+        import android.net.wifi.WifiManager;
+        import android.os.Build;
+        import android.os.Bundle;
+        import android.os.Environment;
+        import android.os.Handler;
+        import android.os.Looper;
+        import android.os.StatFs;
+        import android.text.InputType;
+        import android.util.DisplayMetrics;
+        import android.view.Gravity;
+        import android.view.View;
+        import android.view.animation.ScaleAnimation;
+        import android.widget.ArrayAdapter;
+        import android.widget.Button;
+        import android.widget.EditText;
+        import android.widget.LinearLayout;
+        import android.widget.ProgressBar;
+        import android.widget.ScrollView;
+        import android.widget.Spinner;
+        import android.widget.TextView;
+        import android.widget.Toast;
+        import androidx.appcompat.app.AppCompatActivity;
+        import androidx.cardview.widget.CardView;
+
+        import java.io.BufferedReader;
+        import java.io.InputStreamReader;
+        import java.util.List;
+
+        public class MainActivity extends AppCompatActivity {
+
+            private TextView ramLive;
+            private TextView cpuLive;
+            private ProgressBar ramBar;
+            private Handler h = new Handler(Looper.getMainLooper());
+            private Runnable liveTask;
+            private ActivityManager am;
+
+            private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density); }
+            private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
+
+            @Override
+            protected void onCreate(Bundle b) {
+                super.onCreate(b);
+                getWindow().setStatusBarColor(Color.parseColor("#0D0D0D"));
+                getWindow().setNavigationBarColor(Color.parseColor("#0D0D0D"));
+                am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+
+                ScrollView scroll = new ScrollView(this);
+                scroll.setBackgroundColor(Color.parseColor("#0D0D0D"));
+                LinearLayout root = new LinearLayout(this);
+                root.setOrientation(LinearLayout.VERTICAL);
+                root.setPadding(dp(16), dp(20), dp(16), dp(28));
+
+                // HEADER
+                LinearLayout hdr = new LinearLayout(this);
+                hdr.setOrientation(LinearLayout.HORIZONTAL);
+                hdr.setGravity(Gravity.CENTER_VERTICAL);
+                hdr.setPadding(dp(12), dp(16), dp(12), dp(16));
+                GradientDrawable hb = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                        new int[]{Color.parseColor("#1A0D00"), Color.parseColor("#2A1500")});
+                hb.setCornerRadius(dp(16));
+                hb.setStroke(dp(1), Color.parseColor("#FF6B00"));
+                hdr.setBackground(hb);
+
+                LinearLayout ht = new LinearLayout(this);
+                ht.setOrientation(LinearLayout.VERTICAL);
+                ht.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+                TextView t1 = new TextView(this);
+                t1.setText("PUBG Tools Pro"); t1.setTextSize(24); t1.setTextColor(Color.parseColor("#FF6B00"));
+                t1.setTypeface(null, Typeface.BOLD); ht.addView(t1);
+                TextView t2 = new TextView(this);
+                t2.setText("v1.0 · Gaming Edition"); t2.setTextSize(11); t2.setTextColor(Color.parseColor("#FFA726"));
+                ht.addView(t2);
+                hdr.addView(ht);
+                root.addView(hdr);
+                spacer(root, 14);
+
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                int dpi = dm.densityDpi;
+
+                // LIVE MONITOR
+                CardView mon = makeCard();
+                LinearLayout monI = makeCardInner();
+                addTitle(monI, "📊 المراقبة الحية");
+                ramLive = new TextView(this);
+                ramLive.setTextSize(14); ramLive.setTextColor(Color.parseColor("#FFFFFF"));
+                ramLive.setTypeface(Typeface.MONOSPACE);
+                ramLive.setPadding(0, dp(4), 0, dp(4));
+                monI.addView(ramLive);
+                cpuLive = new TextView(this);
+                cpuLive.setTextSize(13); cpuLive.setTextColor(Color.parseColor("#FFA726"));
+                cpuLive.setTypeface(Typeface.MONOSPACE);
+                cpuLive.setPadding(0, dp(2), 0, dp(8));
+                monI.addView(cpuLive);
+                ramBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+                ramBar.setMax(100);
+                LinearLayout.LayoutParams rblp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(8));
+                rblp.setMargins(0, dp(4), 0, dp(10));
+                ramBar.setLayoutParams(rblp);
+                monI.addView(ramBar);
+
+                Button clean = new Button(this);
+                clean.setText("🧹 تنظيف الذاكرة");
+                clean.setTextColor(Color.parseColor("#FFFFFF"));
+                clean.setTextSize(15); clean.setTypeface(null, Typeface.BOLD);
+                GradientDrawable cb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
+                cb.setCornerRadius(dp(10));
+                clean.setBackground(cb);
+                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50));
+                clp.setMargins(0, dp(6), 0, dp(6)); clean.setLayoutParams(clp);
+                monI.addView(clean);
+
+                final TextView cleanOut = new TextView(this);
+                cleanOut.setTextSize(12); cleanOut.setTextColor(Color.parseColor("#FFFFFF"));
+                cleanOut.setTypeface(Typeface.MONOSPACE);
+                cleanOut.setPadding(dp(10), dp(10), dp(10), dp(10));
+                GradientDrawable co = new GradientDrawable();
+                co.setColor(Color.parseColor("#0D0D0D")); co.setCornerRadius(dp(8));
+                co.setStroke(dp(1), Color.parseColor("#FF6B00"));
+                cleanOut.setBackground(co);
+                cleanOut.setVisibility(View.GONE);
+                monI.addView(cleanOut);
+
+                clean.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { anim(v); cleanMemory(cleanOut); }
+                });
+
+                mon.addView(monI); root.addView(mon);
+
+                // GAME MODE
+                CardView gm = makeCard();
+                LinearLayout gmI = makeCardInner();
+                addTitle(gmI, "🎮 وضع الجيم الاحترافي");
+
+                TextView gmDesc = new TextView(this);
+                gmDesc.setText("إغلاق التطبيقات · كتم الإشعارات · قفل السطوع · وضع الأداء");
+                gmDesc.setTextSize(12); gmDesc.setTextColor(Color.parseColor("#9E9E9E"));
+                gmDesc.setPadding(0, dp(4), 0, dp(10));
+                gmI.addView(gmDesc);
+
+                Button gmOn = new Button(this);
+                gmOn.setText("⚡ تفعيل الجيم مود");
+                gmOn.setTextColor(Color.parseColor("#FFFFFF"));
+                gmOn.setTextSize(15); gmOn.setTypeface(null, Typeface.BOLD);
+                GradientDrawable gmb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
+                gmb.setCornerRadius(dp(10));
+                gmOn.setBackground(gmb);
+                LinearLayout.LayoutParams gmlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
+                gmlp.setMargins(0, dp(6), 0, dp(8)); gmOn.setLayoutParams(gmlp);
+                gmI.addView(gmOn);
+
+                Button gmOff = new Button(this);
+                gmOff.setText("إيقاف الجيم مود");
+                gmOff.setTextColor(Color.parseColor("#FF6B00"));
+                gmOff.setTextSize(14); gmOff.setTypeface(null, Typeface.BOLD);
+                GradientDrawable gob = new GradientDrawable();
+                gob.setColor(Color.parseColor("#0D0D0D"));
+                gob.setCornerRadius(dp(10)); gob.setStroke(dp(1), Color.parseColor("#FF6B00"));
+                gmOff.setBackground(gob);
+                LinearLayout.LayoutParams golp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
+                golp.setMargins(0, 0, 0, dp(10)); gmOff.setLayoutParams(golp);
+                gmI.addView(gmOff);
+
+                final TextView gmOut = new TextView(this);
+                gmOut.setTextSize(11); gmOut.setTextColor(Color.parseColor("#FFFFFF"));
+                gmOut.setTypeface(Typeface.MONOSPACE);
+                gmOut.setPadding(dp(10), dp(10), dp(10), dp(10));
+                GradientDrawable gmo = new GradientDrawable();
+                gmo.setColor(Color.parseColor("#0D0D0D")); gmo.setCornerRadius(dp(8));
+                gmo.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                gmOut.setBackground(gmo);
+                gmOut.setVisibility(View.GONE);
+                gmI.addView(gmOut);
+
+                gmOn.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { anim(v); gameOn(gmOut); }
+                });
+                gmOff.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { gameOff(gmOut); }
+                });
+
+                gm.addView(gmI); root.addView(gm);
+
+                // SENSITIVITY
+                CardView sens = makeCard();
+                LinearLayout sI = makeCardInner();
+                addTitle(sI, "◎ حاسبة الحساسية");
+
+                final EditText dpiIn = new EditText(this);
+                dpiIn.setInputType(InputType.TYPE_CLASS_NUMBER);
+                dpiIn.setText(String.valueOf(dpi));
+                dpiIn.setTextColor(Color.parseColor("#FFFFFF"));
+                dpiIn.setPadding(dp(12), dp(10), dp(12), dp(10));
+                GradientDrawable dg = new GradientDrawable();
+                dg.setColor(Color.parseColor("#0D0D0D")); dg.setCornerRadius(dp(8));
+                dg.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                dpiIn.setBackground(dg);
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                dlp.setMargins(0, dp(6), 0, dp(10)); dpiIn.setLayoutParams(dlp);
+                sI.addView(dpiIn);
+
+                final Spinner sp = new Spinner(this);
+                String[] styles = {"2 أصابع", "3 أصابع", "4 أصابع", "5 أصابع", "جيروسكوب"};
+                ArrayAdapter<String> ad = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, styles);
+                sp.setAdapter(ad); sp.setBackgroundColor(Color.parseColor("#0D0D0D"));
+                LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                slp.setMargins(0, 0, 0, dp(10)); sp.setLayoutParams(slp);
+                sI.addView(sp);
+
+                Button calc = new Button(this);
+                calc.setText("احسب");
+                calc.setTextColor(Color.parseColor("#FFFFFF"));
+                calc.setTypeface(null, Typeface.BOLD);
+                GradientDrawable calcb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
+                calcb.setCornerRadius(dp(10));
+                calc.setBackground(calcb);
+                LinearLayout.LayoutParams calclp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46));
+                calclp.setMargins(0, 0, 0, dp(10)); calc.setLayoutParams(calclp);
+                sI.addView(calc);
+
+                final TextView resOut = new TextView(this);
+                resOut.setTextSize(13); resOut.setTextColor(Color.parseColor("#FFFFFF"));
+                resOut.setTypeface(Typeface.MONOSPACE);
+                resOut.setPadding(dp(12), dp(12), dp(12), dp(12));
+                GradientDrawable ro = new GradientDrawable();
+                ro.setColor(Color.parseColor("#0D0D0D")); ro.setCornerRadius(dp(8));
+                ro.setStroke(dp(1), Color.parseColor("#FF6B00"));
+                resOut.setBackground(ro);
+                resOut.setVisibility(View.GONE);
+                sI.addView(resOut);
+
+                Button copyBtn = new Button(this);
+                copyBtn.setText("📋 نسخ");
+                copyBtn.setTextColor(Color.parseColor("#FF6B00"));
+                copyBtn.setTypeface(null, Typeface.BOLD);
+                GradientDrawable cob = new GradientDrawable();
+                cob.setColor(Color.parseColor("#0D0D0D")); cob.setCornerRadius(dp(10));
+                cob.setStroke(dp(1), Color.parseColor("#FF6B00"));
+                copyBtn.setBackground(cob);
+                LinearLayout.LayoutParams colp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42));
+                colp.setMargins(0, dp(6), 0, 0); copyBtn.setLayoutParams(colp);
+                copyBtn.setVisibility(View.GONE);
+                sI.addView(copyBtn);
+
+                calc.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        try {
+                            int d = Integer.parseInt(dpiIn.getText().toString().trim());
+                            if (d < 200 || d > 800) { toast("DPI 200-800"); return; }
+                            resOut.setText(computeSens(d, sp.getSelectedItemPosition()));
+                            resOut.setVisibility(View.VISIBLE);
+                            copyBtn.setVisibility(View.VISIBLE);
+                        } catch (Exception e) { toast("رقم غلط"); }
+                    }
+                });
+                copyBtn.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        ClipboardManager cm = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                        cm.setPrimaryClip(ClipData.newPlainText("Sens", resOut.getText().toString()));
+                        toast("تم النسخ");
+                    }
+                });
+                sens.addView(sI); root.addView(sens);
+
+                // NETWORK
+                CardView net = makeCard();
+                LinearLayout nI = makeCardInner();
+                addTitle(nI, "◉ الشبكة");
+                TextView netInfo = new TextView(this);
+                netInfo.setTextSize(13); netInfo.setTextColor(Color.parseColor("#FFFFFF"));
+                netInfo.setPadding(0, dp(6), 0, dp(10));
+                nI.addView(netInfo);
+                fillNet(netInfo);
+
+                final EditText pingIn = new EditText(this);
+                pingIn.setInputType(InputType.TYPE_CLASS_TEXT);
+                pingIn.setText("8.8.8.8");
+                pingIn.setTextColor(Color.parseColor("#FFFFFF"));
+                pingIn.setPadding(dp(12), dp(10), dp(12), dp(10));
+                GradientDrawable pg = new GradientDrawable();
+                pg.setColor(Color.parseColor("#0D0D0D")); pg.setCornerRadius(dp(8));
+                pg.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                pingIn.setBackground(pg);
+                LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                plp.setMargins(0, dp(6), 0, dp(10)); pingIn.setLayoutParams(plp);
+                nI.addView(pingIn);
+
+                Button pb = new Button(this);
+                pb.setText("Ping");
+                pb.setTextColor(Color.parseColor("#FFFFFF"));
+                pb.setTypeface(null, Typeface.BOLD);
+                GradientDrawable pbb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
+                pbb.setCornerRadius(dp(10));
+                pb.setBackground(pbb);
+                LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
+                pblp.setMargins(0, 0, 0, dp(10)); pb.setLayoutParams(pblp);
+                nI.addView(pb);
+
+                final TextView pingOut = new TextView(this);
+                pingOut.setTextSize(11); pingOut.setTextColor(Color.parseColor("#FFFFFF"));
+                pingOut.setTypeface(Typeface.MONOSPACE);
+                pingOut.setPadding(dp(10), dp(10), dp(10), dp(10));
+                GradientDrawable po = new GradientDrawable();
+                po.setColor(Color.parseColor("#0D0D0D")); po.setCornerRadius(dp(8));
+                po.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                pingOut.setBackground(po);
+                pingOut.setVisibility(View.GONE);
+                nI.addView(pingOut);
+
+                pb.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        final String host = pingIn.getText().toString().trim();
+                        if (host.isEmpty()) { toast("أدخل host"); return; }
+                        pingOut.setText("جارٍ...");
+                        pingOut.setVisibility(View.VISIBLE);
+                        new Thread(new Runnable() { @Override public void run() {
+                            final String r = shOut("ping -c 4 " + host);
+                            runOnUiThread(new Runnable() { @Override public void run() { pingOut.setText(r); } });
+                        }}).start();
+                    }
+                });
+                net.addView(nI); root.addView(net);
+
+                // APPS
+                CardView apps = makeCard();
+                LinearLayout aI = makeCardInner();
+                addTitle(aI, "📦 التطبيقات المثبتة");
+                Button ab = new Button(this);
+                ab.setText("عرض التطبيقات");
+                ab.setTextColor(Color.parseColor("#FF6B00"));
+                ab.setTypeface(null, Typeface.BOLD);
+                GradientDrawable apb = new GradientDrawable();
+                apb.setColor(Color.parseColor("#0D0D0D")); apb.setCornerRadius(dp(10));
+                apb.setStroke(dp(1), Color.parseColor("#FF6B00"));
+                ab.setBackground(apb);
+                LinearLayout.LayoutParams aplp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42));
+                ab.setLayoutParams(aplp);
+                aI.addView(ab);
+
+                final TextView appOut = new TextView(this);
+                appOut.setTextSize(11); appOut.setTextColor(Color.parseColor("#FFFFFF"));
+                appOut.setTypeface(Typeface.MONOSPACE);
+                appOut.setPadding(dp(10), dp(10), dp(10), dp(10));
+                GradientDrawable ao = new GradientDrawable();
+                ao.setColor(Color.parseColor("#0D0D0D")); ao.setCornerRadius(dp(8));
+                ao.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                appOut.setBackground(ao);
+                appOut.setVisibility(View.GONE);
+                aI.addView(appOut);
+
+                ab.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        PackageManager pm = getPackageManager();
+                        List<ApplicationInfo> apps = pm.getInstalledApplications(0);
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("(").append(apps.size()).append(")\n\n");
+                        int c = 0;
+                        for (ApplicationInfo app : apps) {
+                            if (c++ > 80) { sb.append("..."); break; }
+                            boolean sys = (app.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+                            sb.append(sys ? "[S] " : "[U] ").append(app.packageName).append("\n");
+                        }
+                        appOut.setText(sb.toString());
+                        appOut.setVisibility(View.VISIBLE);
+                    }
+                });
+                apps.addView(aI); root.addView(apps);
+
+                // ABOUT
+                CardView abt = makeCard();
+                LinearLayout abI = makeCardInner();
+                addTitle(abI, "ℹ حول");
+                addRow(abI, "النسخة", "1.0");
+                addRow(abI, "المطور", "VANTA for WORM");
+                abt.addView(abI); root.addView(abt);
+
+                scroll.addView(root);
+                setContentView(scroll);
+                startLive();
+            }
+
+            private void startLive() {
+                liveTask = new Runnable() {
+                    @Override public void run() {
+                        try {
+                            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                            am.getMemoryInfo(mi);
+                            long tot = mi.totalMem / (1024L*1024L);
+                            long av = mi.availMem / (1024L*1024L);
+                            long us = tot - av;
+                            int pct = (int)((us * 100) / tot);
+                            ramLive.setText("🧠 RAM: " + us + " / " + tot + " MB  (" + pct + "%)");
+                            ramBar.setProgress(pct);
+                            int cores = Runtime.getRuntime().availableProcessors();
+                            long heap = Runtime.getRuntime().totalMemory() / (1024L*1024L);
+                            cpuLive.setText("⚙ الأنوية: " + cores + "  ·  JVM: " + heap + " MB");
+                        } catch (Throwable ignored) {}
+                        h.postDelayed(this, 1000);
+                    }
+                };
+                h.post(liveTask);
+            }
+
+            @Override protected void onDestroy() {
+                super.onDestroy();
+                if (liveTask != null) h.removeCallbacks(liveTask);
+            }
+
+            private void anim(View v) {
+                ScaleAnimation sa = new ScaleAnimation(1f, 0.95f, 1f, 0.95f,
+                        ScaleAnimation.RELATIVE_TO_SELF, 0.5f, ScaleAnimation.RELATIVE_TO_SELF, 0.5f);
+                sa.setDuration(100);
+                sa.setRepeatCount(1);
+                sa.setRepeatMode(ScaleAnimation.REVERSE);
+                v.startAnimation(sa);
+            }
+
+            private void cleanMemory(final TextView out) {
+                out.setText("🧹 جارٍ التنظيف...");
+                out.setVisibility(View.VISIBLE);
+                new Thread(new Runnable() { @Override public void run() {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("🧹 تنظيف الذاكرة\n─────────────\n");
+                    ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                    am.getMemoryInfo(mi);
+                    long before = mi.availMem / (1024L*1024L);
+                    shOut("am kill-all");
+                    sb.append("✓ إشارة kill-all\n");
+                    System.gc();
+                    try { Thread.sleep(500); } catch (Exception ignored) {}
+                    am.getMemoryInfo(mi);
+                    long after = mi.availMem / (1024L*1024L);
+                    long freed = after - before;
+                    sb.append("─────────────\n");
+                    sb.append("📊 قبل: ").append(before).append(" MB\n");
+                    sb.append("📊 بعد: ").append(after).append(" MB\n");
+                    if (freed > 0) sb.append("✅ حُرّر: ").append(freed).append(" MB");
+                    else sb.append("ℹ️ الذاكرة كانت نظيفة");
+                    final String r = sb.toString();
+                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(r); } });
+                }}).start();
+            }
+
+            private void gameOn(final TextView out) {
+                out.setText("⚡ تفعيل...");
+                out.setVisibility(View.VISIBLE);
+                new Thread(new Runnable() { @Override public void run() {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("⚡ الجيم مود\n─────────────\n");
+                    shOut("settings put global low_power 1");
+                    sb.append("✓ وضع الأداء العالي\n");
+                    shOut("am kill-all");
+                    sb.append("✓ إغلاق التطبيقات الخلفية\n");
+                    shOut("settings put system screen_brightness_mode 0");
+                    sb.append("✓ قفل السطوع\n");
+                    try {
+                        PackageManager pm = getPackageManager();
+                        List<ApplicationInfo> apps = pm.getInstalledApplications(0);
+                        String self = getPackageName();
+                        int stopped = 0;
+                        for (ApplicationInfo app : apps) {
+                            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                            if (app.packageName.equals(self)) continue;
+                            if (app.packageName.contains("tencent") || app.packageName.contains("pubg")) continue;
+                            shOut("am force-stop " + app.packageName);
+                            stopped++;
+                            if (stopped > 12) break;
+                        }
+                        sb.append("✓ إيقاف ").append(stopped).append(" تطبيق\n");
+                    } catch (Throwable t) { sb.append("⚠ بعض التطبيقات ما توقفت\n"); }
+                    sb.append("─────────────\n🎮 جاهز للعب");
+                    final String r = sb.toString();
+                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(r); } });
+                }}).start();
+            }
+
+            private void gameOff(final TextView out) {
+                new Thread(new Runnable() { @Override public void run() {
+                    shOut("settings put global low_power 0");
+                    shOut("settings put system screen_brightness_mode 1");
+                    final String r = "✓ تم الإيقاف";
+                    runOnUiThread(new Runnable() { @Override public void run() {
+                        out.setText(r); out.setVisibility(View.VISIBLE);
+                    }});
+                }}).start();
+            }
+
+            private String shOut(String cmd) {
+                try {
+                    Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+                    BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String l;
+                    while ((l = r.readLine()) != null) sb.append(l).append("\n");
+                    p.waitFor();
+                    return sb.toString();
+                } catch (Throwable t) { return ""; }
+            }
+
+            private void fillNet(TextView tv) {
+                try {
+                    ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+                    NetworkInfo ni = cm.getActiveNetworkInfo();
+                    StringBuilder sb = new StringBuilder();
+                    if (ni != null && ni.isConnected()) sb.append("النوع: ").append(ni.getTypeName()).append("\n");
+                    else sb.append("غير متصل\n");
+                    WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+                    if (wm != null && wm.isWifiEnabled()) {
+                        WifiInfo wi = wm.getConnectionInfo();
+                        if (wi != null) sb.append("WiFi: ").append(wi.getSSID()).append("\n");
+                    }
+                    tv.setText(sb.toString());
+                } catch (Throwable ignored) {}
+            }
+
+            private String computeSens(int dpi, int idx) {
+                double sf; String sn;
+                switch (idx) {
+                    case 0: sf = 1.15; sn = "2 أصابع"; break;
+                    case 1: sf = 1.05; sn = "3 أصابع"; break;
+                    case 2: sf = 0.95; sn = "4 أصابع"; break;
+                    case 3: sf = 0.88; sn = "5 أصابع"; break;
+                    case 4: sf = 0.80; sn = "جيروسكوب"; break;
+                    default: sf = 1.0; sn = "-";
+                }
+                double df = 450.0 / dpi;
+                StringBuilder sb = new StringBuilder();
+                sb.append("DPI: ").append(dpi).append("\n");
+                sb.append("النمط: ").append(sn).append("\n─────────────\n");
+                sb.append("🎯 الكاميرا: ").append(clamp((int)(90*df*sf))).append("\n");
+                sb.append("🎯 ADS: ").append(clamp((int)(55*df*sf))).append("\n");
+                sb.append("🎯 TPP: ").append(clamp((int)(60*df*sf))).append("\n");
+                sb.append("🎯 FPP: ").append(clamp((int)(65*df*sf))).append("\n");
+                sb.append("🎯 الجيروسكوب: ").append(clamp((int)(300*df*sf))).append("\n");
+                return sb.toString();
+            }
+            private int clamp(int v) { return Math.max(1, Math.min(300, v)); }
+
+            private void spacer(LinearLayout p, int h) {
+                View v = new View(this);
+                v.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(h)));
+                p.addView(v);
+            }
+
+            private CardView makeCard() {
+                CardView c = new CardView(this);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                lp.setMargins(0, dp(6), 0, dp(6));
+                c.setLayoutParams(lp);
+                c.setRadius(dp(14));
+                c.setCardElevation(dp(2));
+                c.setCardBackgroundColor(Color.parseColor("#1A1A1A"));
+                c.setUseCompatPadding(true);
+                return c;
+            }
+
+            private LinearLayout makeCardInner() {
+                LinearLayout i = new LinearLayout(this);
+                i.setOrientation(LinearLayout.VERTICAL);
+                i.setPadding(dp(18), dp(16), dp(18), dp(16));
+                return i;
+            }
+
+            private void addTitle(LinearLayout p, String txt) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setGravity(Gravity.CENTER_VERTICAL);
+                row.setPadding(0, 0, 0, dp(10));
+                View bar = new View(this);
+                LinearLayout.LayoutParams bl = new LinearLayout.LayoutParams(dp(4), dp(22));
+                bl.setMargins(0, 0, dp(10), 0);
+                bar.setLayoutParams(bl);
+                GradientDrawable bg = new GradientDrawable();
+                bg.setColor(Color.parseColor("#FF6B00")); bg.setCornerRadius(dp(2));
+                bar.setBackground(bg);
+                row.addView(bar);
+                TextView tv = new TextView(this);
+                tv.setText(txt); tv.setTextSize(17); tv.setTextColor(Color.parseColor("#FF6B00"));
+                tv.setTypeface(null, Typeface.BOLD);
+                row.addView(tv);
+                p.addView(row);
+            }
+
+            private void addRow(LinearLayout p, String k, String v) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                row.setPadding(0, dp(5), 0, dp(5));
+                TextView kk = new TextView(this);
+                kk.setText(k); kk.setTextSize(13); kk.setTextColor(Color.parseColor("#9E9E9E"));
+                kk.setMinWidth(dp(90)); row.addView(kk);
+                TextView sep = new TextView(this);
+                sep.setText(" · "); sep.setTextSize(13); sep.setTextColor(Color.parseColor("#2A2A2A"));
+                row.addView(sep);
+                TextView vv = new TextView(this);
+                vv.setText(v); vv.setTextSize(13); vv.setTextColor(Color.parseColor("#FFFFFF"));
+                vv.setTypeface(null, Typeface.BOLD);
+                row.addView(vv);
+                p.addView(row);
+            }
+        }
+        XD
+
+        echo "=== DONE ==="
+        find . -type f -not -path './.git/*' | sort
+
+    - name: Build APK
+      run: |
+        echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+        gradle assembleDebug --no-daemon 2>&1 | tail -60
+
+    - name: Upload APK
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pubg-tools-apk
+        path: app/build/outputs/apk/debug/*.apk

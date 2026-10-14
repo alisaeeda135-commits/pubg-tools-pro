@@ -1,4 +1,4 @@
-name: Build APK v2.0
+name: Build APK v3.0
 
 on:
   push:
@@ -56,8 +56,8 @@ jobs:
                 applicationId "com.vanta.pubgtools"
                 minSdk 24
                 targetSdk 34
-                versionCode 2
-                versionName "2.0"
+                versionCode 4
+                versionName "3.0"
             }
             buildTypes { release { minifyEnabled false } }
             compileOptions {
@@ -83,6 +83,7 @@ jobs:
             <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
             <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
             <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+            <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
             <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
                 tools:ignore="QueryAllPackagesPermission" />
             <application
@@ -91,7 +92,10 @@ jobs:
                 android:label="@string/app_name"
                 android:supportsRtl="true"
                 android:theme="@style/AppTheme">
-                <activity android:name=".MainActivity" android:exported="true">
+                <activity
+                    android:name=".MainActivity"
+                    android:exported="true"
+                    android:configChanges="orientation|screenSize|keyboardHidden">
                     <intent-filter>
                         <action android:name="android.intent.action.MAIN" />
                         <category android:name="android.intent.category.LAUNCHER" />
@@ -158,6 +162,7 @@ jobs:
             <color name="primary_dark">#E55A00</color>
             <color name="bg_dark">#0D0D0D</color>
             <color name="bg_card">#1A1A1A</color>
+            <color name="bg_nav">#151515</color>
         </resources>
         XA
 
@@ -176,11 +181,12 @@ jobs:
                 <item name="colorPrimaryDark">@color/primary_dark</item>
                 <item name="android:windowBackground">@color/bg_dark</item>
                 <item name="android:statusBarColor">@color/bg_dark</item>
-                <item name="android:navigationBarColor">@color/bg_dark</item>
+                <item name="android:navigationBarColor">@color/bg_nav</item>
             </style>
         </resources>
         XC
 
+        # ============== MAIN ACTIVITY — Bottom Nav ==============
         cat > app/src/main/java/com/vanta/pubgtools/MainActivity.java << 'XD'
         package com.vanta.pubgtools;
 
@@ -195,6 +201,7 @@ jobs:
         import android.graphics.Color;
         import android.graphics.Typeface;
         import android.graphics.drawable.GradientDrawable;
+        import android.media.AudioManager;
         import android.net.ConnectivityManager;
         import android.net.NetworkInfo;
         import android.net.wifi.WifiInfo;
@@ -212,6 +219,7 @@ jobs:
         import android.widget.ArrayAdapter;
         import android.widget.Button;
         import android.widget.EditText;
+        import android.widget.FrameLayout;
         import android.widget.LinearLayout;
         import android.widget.ProgressBar;
         import android.widget.ScrollView;
@@ -227,11 +235,22 @@ jobs:
 
         public class MainActivity extends AppCompatActivity {
 
-            private TextView ramLive, cpuLive, shizukuStatus;
-            private ProgressBar ramBar;
+            private LinearLayout contentArea;
+            private LinearLayout navBar;
+            private int activeTab = 0;
+
+            private ActivityManager am;
+            private AudioManager audioManager;
             private Handler h = new Handler(Looper.getMainLooper());
             private Runnable liveTask;
-            private ActivityManager am;
+
+            private TextView ramLive, cpuLive, volLive, shizukuStatus;
+
+            private int COLOR_PRIMARY = Color.parseColor("#FF6B00");
+            private int COLOR_BG = Color.parseColor("#0D0D0D");
+            private int COLOR_CARD = Color.parseColor("#1A1A1A");
+            private int COLOR_TEXT = Color.parseColor("#FFFFFF");
+            private int COLOR_TEXT_DIM = Color.parseColor("#9E9E9E");
 
             private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density); }
             private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
@@ -239,238 +258,477 @@ jobs:
             @Override
             protected void onCreate(Bundle b) {
                 super.onCreate(b);
-                getWindow().setStatusBarColor(Color.parseColor("#0D0D0D"));
-                getWindow().setNavigationBarColor(Color.parseColor("#0D0D0D"));
+                getWindow().setStatusBarColor(COLOR_BG);
+                getWindow().setNavigationBarColor(Color.parseColor("#151515"));
                 am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+                audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
 
+                LinearLayout main = new LinearLayout(this);
+                main.setOrientation(LinearLayout.VERTICAL);
+                main.setBackgroundColor(COLOR_BG);
+
+                // Content area (scrollable)
                 ScrollView scroll = new ScrollView(this);
-                scroll.setBackgroundColor(Color.parseColor("#0D0D0D"));
-                LinearLayout root = new LinearLayout(this);
-                root.setOrientation(LinearLayout.VERTICAL);
-                root.setPadding(dp(16), dp(20), dp(16), dp(28));
+                scroll.setBackgroundColor(COLOR_BG);
+                LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f);
+                scroll.setLayoutParams(slp);
 
-                // HEADER
-                LinearLayout hdr = new LinearLayout(this);
-                hdr.setOrientation(LinearLayout.HORIZONTAL);
-                hdr.setGravity(Gravity.CENTER_VERTICAL);
-                hdr.setPadding(dp(12), dp(16), dp(12), dp(16));
-                GradientDrawable hb = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                        new int[]{Color.parseColor("#1A0D00"), Color.parseColor("#2A1500")});
-                hb.setCornerRadius(dp(16));
-                hb.setStroke(dp(1), Color.parseColor("#FF6B00"));
-                hdr.setBackground(hb);
+                contentArea = new LinearLayout(this);
+                contentArea.setOrientation(LinearLayout.VERTICAL);
+                contentArea.setPadding(dp(16), dp(16), dp(16), dp(20));
+                scroll.addView(contentArea);
 
-                LinearLayout ht = new LinearLayout(this);
-                ht.setOrientation(LinearLayout.VERTICAL);
-                ht.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-                TextView t1 = new TextView(this);
-                t1.setText("PUBG Tools Pro"); t1.setTextSize(24); t1.setTextColor(Color.parseColor("#FF6B00"));
-                t1.setTypeface(null, Typeface.BOLD); ht.addView(t1);
-                TextView t2 = new TextView(this);
-                t2.setText("v2.0 · Ultra Edition"); t2.setTextSize(11); t2.setTextColor(Color.parseColor("#FFA726"));
-                ht.addView(t2);
-                hdr.addView(ht);
-                root.addView(hdr);
-                spacer(root, 14);
+                main.addView(scroll);
 
-                DisplayMetrics dm = getResources().getDisplayMetrics();
-                int dpi = dm.densityDpi;
+                // Bottom Nav
+                navBar = new LinearLayout(this);
+                navBar.setOrientation(LinearLayout.HORIZONTAL);
+                navBar.setBackgroundColor(Color.parseColor("#151515"));
+                navBar.setElevation(dp(8));
+                LinearLayout.LayoutParams nlp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(64));
+                navBar.setLayoutParams(nlp);
+                main.addView(navBar);
 
-                // SHIZUKU STATUS CARD
-                CardView shCard = makeCard();
-                LinearLayout shI = makeCardInner();
-                addTitle(shI, "⚡ Shizuku");
+                setContentView(main);
 
+                buildNav();
+                showTab(0);
+                startLive();
+            }
+
+            // ============== NAV ==============
+            private void buildNav() {
+                navBar.removeAllViews();
+                addNavBtn(0, "🏠", "الرئيسية");
+                addNavBtn(1, "🎮", "اللعب");
+                addNavBtn(2, "🛠", "الأدوات");
+                addNavBtn(3, "⚙", "الإعدادات");
+            }
+
+            private void addNavBtn(final int idx, String icon, String label) {
+                LinearLayout btn = new LinearLayout(this);
+                btn.setOrientation(LinearLayout.VERTICAL);
+                btn.setGravity(Gravity.CENTER);
+                btn.setLayoutParams(new LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.MATCH_PARENT, 1f));
+                btn.setClickable(true);
+
+                final TextView ic = new TextView(this);
+                ic.setText(icon); ic.setTextSize(22); ic.setGravity(Gravity.CENTER);
+                btn.addView(ic);
+
+                final TextView lb = new TextView(this);
+                lb.setText(label); lb.setTextSize(11); lb.setGravity(Gravity.CENTER);
+                btn.addView(lb);
+
+                updateNavStyle(ic, lb, idx == activeTab);
+
+                btn.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        showTab(idx);
+                        buildNav();
+                    }
+                });
+
+                navBar.addView(btn);
+            }
+
+            private void updateNavStyle(TextView ic, TextView lb, boolean active) {
+                ic.setTextColor(active ? COLOR_PRIMARY : COLOR_TEXT_DIM);
+                lb.setTextColor(active ? COLOR_PRIMARY : COLOR_TEXT_DIM);
+            }
+
+            // ============== TAB SWITCH ==============
+            private void showTab(int tab) {
+                activeTab = tab;
+                contentArea.removeAllViews();
+                switch (tab) {
+                    case 0: buildHome(); break;
+                    case 1: buildGame(); break;
+                    case 2: buildTools(); break;
+                    case 3: buildSettings(); break;
+                }
+            }
+
+            // ============== TAB 0: HOME ==============
+            private void buildHome() {
+                addHeader("PUBG Tools Pro", "v3.0 · الرئيسية");
+
+                // Live monitor
+                CardView mon = makeCard();
+                LinearLayout mi = makeCardInner();
+                addTitle(mi, "📊 المراقبة الحية");
+                ramLive = new TextView(this);
+                ramLive.setTextSize(14); ramLive.setTextColor(COLOR_TEXT);
+                ramLive.setTypeface(Typeface.MONOSPACE);
+                ramLive.setPadding(0, dp(4), 0, dp(4));
+                mi.addView(ramLive);
+                cpuLive = new TextView(this);
+                cpuLive.setTextSize(13); cpuLive.setTextColor(COLOR_PRIMARY);
+                cpuLive.setTypeface(Typeface.MONOSPACE);
+                cpuLive.setPadding(0, dp(2), 0, dp(4));
+                mi.addView(cpuLive);
+                volLive = new TextView(this);
+                volLive.setTextSize(13); volLive.setTextColor(Color.parseColor("#4CAF50"));
+                volLive.setTypeface(Typeface.MONOSPACE);
+                volLive.setPadding(0, dp(2), 0, dp(8));
+                mi.addView(volLive);
+                mon.addView(mi);
+                contentArea.addView(mon);
+
+                // Quick actions
+                CardView qa = makeCard();
+                LinearLayout qi = makeCardInner();
+                addTitle(qi, "⚡ إجراءات سريعة");
+
+                LinearLayout row1 = new LinearLayout(this);
+                row1.setOrientation(LinearLayout.HORIZONTAL);
+                row1.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT));
+
+                Button b1 = makeBtn("🧹 تنظيف", COLOR_PRIMARY, COLOR_TEXT);
+                b1.setLayoutParams(new LinearLayout.LayoutParams(0, dp(56), 1f));
+                b1.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { anim(v); quickClean(); }
+                });
+                row1.addView(b1);
+                addGapH(row1, 8);
+                Button b2 = makeBtn("⚡ جيم مود", COLOR_PRIMARY, COLOR_TEXT);
+                b2.setLayoutParams(new LinearLayout.LayoutParams(0, dp(56), 1f));
+                b2.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { anim(v); quickGame(); }
+                });
+                row1.addView(b2);
+                qi.addView(row1);
+
+                addGap(qi, 8);
+
+                LinearLayout row2 = new LinearLayout(this);
+                row2.setOrientation(LinearLayout.HORIZONTAL);
+                Button b3 = makeBtn("🔊 صوت 75%", COLOR_CARD, COLOR_PRIMARY);
+                b3.setLayoutParams(new LinearLayout.LayoutParams(0, dp(48), 1f));
+                b3.setBackground(outlineBg());
+                b3.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { anim(v); setVolume75(); }
+                });
+                row2.addView(b3);
+                addGapH(row2, 8);
+                Button b4 = makeBtn("📊 معلومات", COLOR_CARD, COLOR_PRIMARY);
+                b4.setLayoutParams(new LinearLayout.LayoutParams(0, dp(48), 1f));
+                b4.setBackground(outlineBg());
+                b4.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { showTab(3); buildNav(); }
+                });
+                row2.addView(b4);
+                qi.addView(row2);
+
+                qa.addView(qi);
+                contentArea.addView(qa);
+
+                // Quick result area
+                final TextView result = new TextView(this);
+                result.setTextSize(12); result.setTextColor(COLOR_TEXT);
+                result.setTypeface(Typeface.MONOSPACE);
+                result.setPadding(dp(10), dp(10), dp(10), dp(10));
+                result.setBackground(monoBg());
+                result.setVisibility(View.GONE);
+                result.setTag("quickResult");
+                contentArea.addView(result);
+            }
+
+            private void quickClean() {
+                TextView out = (TextView) contentArea.findViewWithTag("quickResult");
+                if (out == null) return;
+                out.setText("🧹 جارٍ...");
+                out.setVisibility(View.VISIBLE);
+                new Thread(new Runnable() { @Override public void run() {
+                    ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                    am.getMemoryInfo(mi);
+                    long before = mi.availMem / (1024L*1024L);
+                    shOut("am kill-all");
+                    System.gc();
+                    try { Thread.sleep(400); } catch (Exception ignored) {}
+                    am.getMemoryInfo(mi);
+                    long after = mi.availMem / (1024L*1024L);
+                    long freed = after - before;
+                    final String txt = "🧹 تنظيف\nقبل: " + before + " MB\nبعد: " + after + " MB\n" +
+                            (freed > 0 ? "✅ حُرّر: " + freed + " MB" : "ℹ️ نظيفة");
+                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(txt); } });
+                }}).start();
+            }
+
+            private void quickGame() {
+                TextView out = (TextView) contentArea.findViewWithTag("quickResult");
+                if (out == null) return;
+                out.setText("⚡ تفعيل...");
+                out.setVisibility(View.VISIBLE);
+                new Thread(new Runnable() { @Override public void run() {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("⚡ جيم مود\n────────\n");
+                    shOut("settings put global low_power 1"); sb.append("✓ أداء عالي\n");
+                    shOut("am kill-all"); sb.append("✓ إغلاق تطبيقات\n");
+                    shOut("settings put system screen_brightness_mode 0"); sb.append("✓ قفل سطوع\n");
+                    try {
+                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                        if (Build.VERSION.SDK_INT >= 23 && nm.isNotificationPolicyAccessGranted()) {
+                            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS);
+                            sb.append("✓ كتم إشعارات (الصوت يعمل)\n");
+                        }
+                    } catch (Throwable ignored) {}
+                    try {
+                        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (max*3)/4, 0);
+                        sb.append("✓ صوت 75%\n");
+                    } catch (Throwable ignored) {}
+                    sb.append("────────\n🎮 جاهز");
+                    final String txt = sb.toString();
+                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(txt); } });
+                }}).start();
+            }
+
+            private void setVolume75() {
+                try {
+                    int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                    audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (max*3)/4, 0);
+                    toast("الصوت على 75%");
+                } catch (Throwable t) { toast("فشل"); }
+            }
+
+            // ============== TAB 1: GAME ==============
+            private void buildGame() {
+                addHeader("🎮 وضع اللعب", "أداء عالي · تركيز كامل");
+
+                // Shizuku
+                CardView sh = makeCard();
+                LinearLayout shi = makeCardInner();
+                addTitle(shi, "⚡ Shizuku");
                 shizukuStatus = new TextView(this);
-                shizukuStatus.setTextSize(13);
-                shizukuStatus.setTextColor(Color.parseColor("#9E9E9E"));
+                shizukuStatus.setTextSize(13); shizukuStatus.setTextColor(COLOR_TEXT_DIM);
                 shizukuStatus.setPadding(0, dp(4), 0, dp(8));
-                shI.addView(shizukuStatus);
+                shi.addView(shizukuStatus);
 
-                Button shBtn = new Button(this);
-                shBtn.setText("طلب صلاحيات Shizuku");
-                shBtn.setTextColor(Color.parseColor("#FFFFFF"));
-                shBtn.setTextSize(14); shBtn.setTypeface(null, Typeface.BOLD);
-                GradientDrawable shb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
-                shb.setCornerRadius(dp(10));
-                shBtn.setBackground(shb);
-                LinearLayout.LayoutParams shlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46));
-                shlp.setMargins(0, 0, 0, dp(6)); shBtn.setLayoutParams(shlp);
-                shI.addView(shBtn);
-
+                Button shBtn = makeBtn("طلب صلاحيات Shizuku", COLOR_PRIMARY, COLOR_TEXT);
+                shBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(46)));
                 shBtn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) { requestShizuku(); }
                 });
+                shi.addView(shBtn);
+                sh.addView(shi);
+                contentArea.addView(sh);
 
-                shCard.addView(shI); root.addView(shCard);
-
-                // LIVE MONITOR
-                CardView mon = makeCard();
-                LinearLayout monI = makeCardInner();
-                addTitle(monI, "📊 المراقبة الحية");
-                ramLive = new TextView(this);
-                ramLive.setTextSize(14); ramLive.setTextColor(Color.parseColor("#FFFFFF"));
-                ramLive.setTypeface(Typeface.MONOSPACE);
-                ramLive.setPadding(0, dp(4), 0, dp(4));
-                monI.addView(ramLive);
-                cpuLive = new TextView(this);
-                cpuLive.setTextSize(13); cpuLive.setTextColor(Color.parseColor("#FFA726"));
-                cpuLive.setTypeface(Typeface.MONOSPACE);
-                cpuLive.setPadding(0, dp(2), 0, dp(8));
-                monI.addView(cpuLive);
-                ramBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-                ramBar.setMax(100);
-                LinearLayout.LayoutParams rblp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(8));
-                rblp.setMargins(0, dp(4), 0, dp(10));
-                ramBar.setLayoutParams(rblp);
-                monI.addView(ramBar);
-
-                Button clean = new Button(this);
-                clean.setText("🧹 تنظيف الذاكرة");
-                clean.setTextColor(Color.parseColor("#FFFFFF"));
-                clean.setTextSize(15); clean.setTypeface(null, Typeface.BOLD);
-                GradientDrawable cb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
-                cb.setCornerRadius(dp(10));
-                clean.setBackground(cb);
-                LinearLayout.LayoutParams clp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50));
-                clp.setMargins(0, dp(6), 0, dp(6)); clean.setLayoutParams(clp);
-                monI.addView(clean);
-
-                final TextView cleanOut = new TextView(this);
-                cleanOut.setTextSize(12); cleanOut.setTextColor(Color.parseColor("#FFFFFF"));
-                cleanOut.setTypeface(Typeface.MONOSPACE);
-                cleanOut.setPadding(dp(10), dp(10), dp(10), dp(10));
-                GradientDrawable co = new GradientDrawable();
-                co.setColor(Color.parseColor("#0D0D0D")); co.setCornerRadius(dp(8));
-                co.setStroke(dp(1), Color.parseColor("#FF6B00"));
-                cleanOut.setBackground(co);
-                cleanOut.setVisibility(View.GONE);
-                monI.addView(cleanOut);
-                clean.setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) { anim(v); cleanMemory(cleanOut); }
-                });
-                mon.addView(monI); root.addView(mon);
-
-                // GAME MODE
+                // Game Mode
                 CardView gm = makeCard();
-                LinearLayout gmI = makeCardInner();
-                addTitle(gmI, "🎮 وضع الجيم الاحترافي");
-                TextView gmDesc = new TextView(this);
-                gmDesc.setText("إغلاق التطبيقات · كتم الإشعارات · قفل السطوع · وضع الأداء · تقييد إنترنت الخلفية");
-                gmDesc.setTextSize(12); gmDesc.setTextColor(Color.parseColor("#9E9E9E"));
-                gmDesc.setPadding(0, dp(4), 0, dp(10));
-                gmI.addView(gmDesc);
+                LinearLayout gmi = makeCardInner();
+                addTitle(gmi, "⚡ الجيم مود الاحترافي");
 
-                Button gmOn = new Button(this);
-                gmOn.setText("⚡ تفعيل الجيم مود");
-                gmOn.setTextColor(Color.parseColor("#FFFFFF"));
-                gmOn.setTextSize(15); gmOn.setTypeface(null, Typeface.BOLD);
-                GradientDrawable gmb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
-                gmb.setCornerRadius(dp(10));
-                gmOn.setBackground(gmb);
-                LinearLayout.LayoutParams gmlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
-                gmlp.setMargins(0, dp(6), 0, dp(8)); gmOn.setLayoutParams(gmlp);
-                gmI.addView(gmOn);
+                TextView gd = new TextView(this);
+                gd.setText("• إغلاق التطبيقات الخلفية\n• كتم الإشعارات (الصوت يعمل)\n• قفل السطوع\n• وضع الأداء العالي\n• تقييد إنترنت الخلفية");
+                gd.setTextSize(12); gd.setTextColor(COLOR_TEXT_DIM);
+                gd.setPadding(0, dp(4), 0, dp(10));
+                gmi.addView(gd);
 
-                Button gmOff = new Button(this);
-                gmOff.setText("إيقاف الجيم مود");
-                gmOff.setTextColor(Color.parseColor("#FF6B00"));
-                gmOff.setTextSize(14); gmOff.setTypeface(null, Typeface.BOLD);
-                GradientDrawable gob = new GradientDrawable();
-                gob.setColor(Color.parseColor("#0D0D0D"));
-                gob.setCornerRadius(dp(10)); gob.setStroke(dp(1), Color.parseColor("#FF6B00"));
-                gmOff.setBackground(gob);
-                LinearLayout.LayoutParams golp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
-                golp.setMargins(0, 0, 0, dp(10)); gmOff.setLayoutParams(golp);
-                gmI.addView(gmOff);
-
-                final TextView gmOut = new TextView(this);
-                gmOut.setTextSize(11); gmOut.setTextColor(Color.parseColor("#FFFFFF"));
-                gmOut.setTypeface(Typeface.MONOSPACE);
-                gmOut.setPadding(dp(10), dp(10), dp(10), dp(10));
-                GradientDrawable gmo = new GradientDrawable();
-                gmo.setColor(Color.parseColor("#0D0D0D")); gmo.setCornerRadius(dp(8));
-                gmo.setStroke(dp(1), Color.parseColor("#2A2A2A"));
-                gmOut.setBackground(gmo);
-                gmOut.setVisibility(View.GONE);
-                gmI.addView(gmOut);
-                gmOn.setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) { anim(v); gameOn(gmOut); }
+                Button on = makeBtn("⚡ تفعيل الجيم مود", COLOR_PRIMARY, COLOR_TEXT);
+                on.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
+                on.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { anim(v); gameOn(); }
                 });
-                gmOff.setOnClickListener(new View.OnClickListener() {
-                    @Override public void onClick(View v) { gameOff(gmOut); }
-                });
-                gm.addView(gmI); root.addView(gm);
+                gmi.addView(on);
+                addGap(gmi, 6);
 
-                // SENSITIVITY
+                Button off = makeBtn("إيقاف الجيم مود", COLOR_CARD, COLOR_PRIMARY);
+                off.setBackground(outlineBg());
+                off.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+                off.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { gameOff(); }
+                });
+                gmi.addView(off);
+
+                addGap(gmi, 8);
+
+                final TextView out = new TextView(this);
+                out.setTextSize(11); out.setTextColor(COLOR_TEXT);
+                out.setTypeface(Typeface.MONOSPACE);
+                out.setPadding(dp(10), dp(10), dp(10), dp(10));
+                out.setBackground(monoBg());
+                out.setVisibility(View.GONE);
+                out.setTag("gameOut");
+                gmi.addView(out);
+
+                gm.addView(gmi);
+                contentArea.addView(gm);
+
+                // Volume control
+                CardView vol = makeCard();
+                LinearLayout vi = makeCardInner();
+                addTitle(vi, "🔊 التحكم بالصوت");
+
+                LinearLayout vrow = new LinearLayout(this);
+                vrow.setOrientation(LinearLayout.HORIZONTAL);
+                Button vUp = makeBtn("🔊 رفع", COLOR_PRIMARY, COLOR_TEXT);
+                vUp.setLayoutParams(new LinearLayout.LayoutParams(0, dp(50), 1f));
+                vUp.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                                AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI);
+                    }
+                });
+                vrow.addView(vUp);
+                addGapH(vrow, 8);
+                Button vDown = makeBtn("🔉 خفض", COLOR_CARD, COLOR_PRIMARY);
+                vDown.setBackground(outlineBg());
+                vDown.setLayoutParams(new LinearLayout.LayoutParams(0, dp(50), 1f));
+                vDown.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) {
+                        audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                                AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+                    }
+                });
+                vrow.addView(vDown);
+                vi.addView(vrow);
+
+                vol.addView(vi);
+                contentArea.addView(vol);
+
+                refreshShizukuStatus();
+            }
+
+            private void gameOn() {
+                TextView out = (TextView) contentArea.findViewWithTag("gameOut");
+                if (out == null) return;
+                out.setText("⚡ تفعيل...");
+                out.setVisibility(View.VISIBLE);
+                new Thread(new Runnable() { @Override public void run() {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("⚡ الجيم مود\n────────\n");
+                    shOut("settings put global low_power 1"); sb.append("✓ أداء عالي\n");
+                    shOut("am kill-all"); sb.append("✓ إغلاق تطبيقات خلفية\n");
+                    shOut("settings put system screen_brightness_mode 0"); sb.append("✓ قفل سطوع\n");
+                    try {
+                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                        if (Build.VERSION.SDK_INT >= 23) {
+                            if (nm.isNotificationPolicyAccessGranted()) {
+                                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS);
+                                sb.append("✓ كتم إشعارات (الصوت يعمل)\n");
+                            } else {
+                                sb.append("⚠ امنح صلاحية DND\n");
+                                startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+                    try {
+                        int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                        audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (max*3)/4, 0);
+                        sb.append("✓ صوت 75%\n");
+                    } catch (Throwable ignored) {}
+                    shOut("cmd netpolicy set restrict-background true");
+                    sb.append("✓ تقييد إنترنت الخلفية\n");
+                    try {
+                        PackageManager pm = getPackageManager();
+                        List<ApplicationInfo> apps = pm.getInstalledApplications(0);
+                        String self = getPackageName();
+                        int stopped = 0;
+                        for (ApplicationInfo app : apps) {
+                            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
+                            if (app.packageName.equals(self)) continue;
+                            if (app.packageName.contains("tencent") || app.packageName.contains("pubg")) continue;
+                            shOut("am force-stop " + app.packageName);
+                            stopped++;
+                            if (stopped > 12) break;
+                        }
+                        sb.append("✓ أوقف ").append(stopped).append(" تطبيق\n");
+                    } catch (Throwable t) {}
+                    sb.append("────────\n🎮 جاهز — العب!");
+                    final String r = sb.toString();
+                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(r); } });
+                }}).start();
+            }
+
+            private void gameOff() {
+                TextView out = (TextView) contentArea.findViewWithTag("gameOut");
+                if (out == null) return;
+                new Thread(new Runnable() { @Override public void run() {
+                    shOut("settings put global low_power 0");
+                    shOut("settings put system screen_brightness_mode 1");
+                    shOut("cmd netpolicy set restrict-background false");
+                    try {
+                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                        if (Build.VERSION.SDK_INT >= 23 && nm.isNotificationPolicyAccessGranted()) {
+                            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+                        }
+                    } catch (Throwable ignored) {}
+                    runOnUiThread(new Runnable() { @Override public void run() {
+                        out.setText("✓ تم إيقاف الجيم مود"); out.setVisibility(View.VISIBLE);
+                    }});
+                }}).start();
+            }
+
+            // ============== TAB 2: TOOLS ==============
+            private void buildTools() {
+                addHeader("🛠 الأدوات", "كل ما تحتاجه");
+
+                // Sensitivity
                 CardView sens = makeCard();
-                LinearLayout sI = makeCardInner();
-                addTitle(sI, "◎ حاسبة الحساسية");
+                LinearLayout si = makeCardInner();
+                addTitle(si, "◎ حاسبة الحساسية");
+
+                DisplayMetrics dm = getResources().getDisplayMetrics();
                 final EditText dpiIn = new EditText(this);
                 dpiIn.setInputType(InputType.TYPE_CLASS_NUMBER);
-                dpiIn.setText(String.valueOf(dpi));
-                dpiIn.setTextColor(Color.parseColor("#FFFFFF"));
+                dpiIn.setText(String.valueOf(dm.densityDpi));
+                dpiIn.setTextColor(COLOR_TEXT);
                 dpiIn.setPadding(dp(12), dp(10), dp(12), dp(10));
-                GradientDrawable dg = new GradientDrawable();
-                dg.setColor(Color.parseColor("#0D0D0D")); dg.setCornerRadius(dp(8));
-                dg.setStroke(dp(1), Color.parseColor("#2A2A2A"));
-                dpiIn.setBackground(dg);
-                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                dlp.setMargins(0, dp(6), 0, dp(10)); dpiIn.setLayoutParams(dlp);
-                sI.addView(dpiIn);
+                dpiIn.setBackground(inputBg());
+                LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                dlp.setMargins(0, dp(6), 0, dp(10));
+                dpiIn.setLayoutParams(dlp);
+                si.addView(dpiIn);
 
                 final Spinner sp = new Spinner(this);
                 String[] styles = {"2 أصابع", "3 أصابع", "4 أصابع", "5 أصابع", "جيروسكوب"};
-                ArrayAdapter<String> ad = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, styles);
-                sp.setAdapter(ad); sp.setBackgroundColor(Color.parseColor("#0D0D0D"));
-                LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                slp.setMargins(0, 0, 0, dp(10)); sp.setLayoutParams(slp);
-                sI.addView(sp);
+                ArrayAdapter<String> ad = new ArrayAdapter<>(this,
+                        android.R.layout.simple_spinner_dropdown_item, styles);
+                sp.setAdapter(ad); sp.setBackgroundColor(COLOR_BG);
+                LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                slp.setMargins(0, 0, 0, dp(10));
+                sp.setLayoutParams(slp);
+                si.addView(sp);
 
-                Button calc = new Button(this);
-                calc.setText("احسب");
-                calc.setTextColor(Color.parseColor("#FFFFFF"));
-                calc.setTypeface(null, Typeface.BOLD);
-                GradientDrawable calcb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
-                calcb.setCornerRadius(dp(10));
-                calc.setBackground(calcb);
-                LinearLayout.LayoutParams calclp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46));
-                calclp.setMargins(0, 0, 0, dp(10)); calc.setLayoutParams(calclp);
-                sI.addView(calc);
+                Button calc = makeBtn("احسب", COLOR_PRIMARY, COLOR_TEXT);
+                calc.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(46)));
+                si.addView(calc);
 
                 final TextView resOut = new TextView(this);
-                resOut.setTextSize(13); resOut.setTextColor(Color.parseColor("#FFFFFF"));
+                resOut.setTextSize(13); resOut.setTextColor(COLOR_TEXT);
                 resOut.setTypeface(Typeface.MONOSPACE);
                 resOut.setPadding(dp(12), dp(12), dp(12), dp(12));
-                GradientDrawable ro = new GradientDrawable();
-                ro.setColor(Color.parseColor("#0D0D0D")); ro.setCornerRadius(dp(8));
-                ro.setStroke(dp(1), Color.parseColor("#FF6B00"));
-                resOut.setBackground(ro);
+                resOut.setBackground(monoBg());
                 resOut.setVisibility(View.GONE);
-                sI.addView(resOut);
+                LinearLayout.LayoutParams rolp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                rolp.setMargins(0, dp(10), 0, 0);
+                resOut.setLayoutParams(rolp);
+                si.addView(resOut);
 
-                Button copyBtn = new Button(this);
-                copyBtn.setText("📋 نسخ");
-                copyBtn.setTextColor(Color.parseColor("#FF6B00"));
-                copyBtn.setTypeface(null, Typeface.BOLD);
-                GradientDrawable cob = new GradientDrawable();
-                cob.setColor(Color.parseColor("#0D0D0D")); cob.setCornerRadius(dp(10));
-                cob.setStroke(dp(1), Color.parseColor("#FF6B00"));
-                copyBtn.setBackground(cob);
-                LinearLayout.LayoutParams colp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42));
-                colp.setMargins(0, dp(6), 0, 0); copyBtn.setLayoutParams(colp);
+                final Button copyBtn = makeBtn("📋 نسخ", COLOR_CARD, COLOR_PRIMARY);
+                copyBtn.setBackground(outlineBg());
+                copyBtn.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
                 copyBtn.setVisibility(View.GONE);
-                sI.addView(copyBtn);
+                si.addView(copyBtn);
 
                 calc.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         try {
                             int d = Integer.parseInt(dpiIn.getText().toString().trim());
-                            if (d < 200 || d > 800) { toast("DPI 200-800"); return; }
+                            if (d < 200 || d > 800) { toast("200-800"); return; }
                             resOut.setText(computeSens(d, sp.getSelectedItemPosition()));
                             resOut.setVisibility(View.VISIBLE);
                             copyBtn.setVisibility(View.VISIBLE);
@@ -484,53 +742,43 @@ jobs:
                         toast("تم النسخ");
                     }
                 });
-                sens.addView(sI); root.addView(sens);
 
-                // NETWORK
+                sens.addView(si);
+                contentArea.addView(sens);
+
+                // Ping
                 CardView net = makeCard();
-                LinearLayout nI = makeCardInner();
-                addTitle(nI, "◉ الشبكة");
-                TextView netInfo = new TextView(this);
-                netInfo.setTextSize(13); netInfo.setTextColor(Color.parseColor("#FFFFFF"));
-                netInfo.setPadding(0, dp(6), 0, dp(10));
-                nI.addView(netInfo);
-                fillNet(netInfo);
+                LinearLayout ni = makeCardInner();
+                addTitle(ni, "◉ Ping");
 
                 final EditText pingIn = new EditText(this);
                 pingIn.setInputType(InputType.TYPE_CLASS_TEXT);
                 pingIn.setText("8.8.8.8");
-                pingIn.setTextColor(Color.parseColor("#FFFFFF"));
+                pingIn.setTextColor(COLOR_TEXT);
                 pingIn.setPadding(dp(12), dp(10), dp(12), dp(10));
-                GradientDrawable pg = new GradientDrawable();
-                pg.setColor(Color.parseColor("#0D0D0D")); pg.setCornerRadius(dp(8));
-                pg.setStroke(dp(1), Color.parseColor("#2A2A2A"));
-                pingIn.setBackground(pg);
-                LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-                plp.setMargins(0, dp(6), 0, dp(10)); pingIn.setLayoutParams(plp);
-                nI.addView(pingIn);
+                pingIn.setBackground(inputBg());
+                LinearLayout.LayoutParams plp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                plp.setMargins(0, dp(6), 0, dp(10));
+                pingIn.setLayoutParams(plp);
+                ni.addView(pingIn);
 
-                Button pb = new Button(this);
-                pb.setText("Ping");
-                pb.setTextColor(Color.parseColor("#FFFFFF"));
-                pb.setTypeface(null, Typeface.BOLD);
-                GradientDrawable pbb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
-                pbb.setCornerRadius(dp(10));
-                pb.setBackground(pbb);
-                LinearLayout.LayoutParams pblp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44));
-                pblp.setMargins(0, 0, 0, dp(10)); pb.setLayoutParams(pblp);
-                nI.addView(pb);
+                Button pb = makeBtn("Ping", COLOR_PRIMARY, COLOR_TEXT);
+                pb.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(44)));
+                ni.addView(pb);
 
                 final TextView pingOut = new TextView(this);
-                pingOut.setTextSize(11); pingOut.setTextColor(Color.parseColor("#FFFFFF"));
+                pingOut.setTextSize(11); pingOut.setTextColor(COLOR_TEXT);
                 pingOut.setTypeface(Typeface.MONOSPACE);
                 pingOut.setPadding(dp(10), dp(10), dp(10), dp(10));
-                GradientDrawable po = new GradientDrawable();
-                po.setColor(Color.parseColor("#0D0D0D")); po.setCornerRadius(dp(8));
-                po.setStroke(dp(1), Color.parseColor("#2A2A2A"));
-                pingOut.setBackground(po);
+                pingOut.setBackground(monoBg());
                 pingOut.setVisibility(View.GONE);
-                nI.addView(pingOut);
+                LinearLayout.LayoutParams polp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                polp.setMargins(0, dp(10), 0, 0);
+                pingOut.setLayoutParams(polp);
+                ni.addView(pingOut);
 
                 pb.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -544,34 +792,31 @@ jobs:
                         }}).start();
                     }
                 });
-                net.addView(nI); root.addView(net);
 
-                // APPS
+                net.addView(ni);
+                contentArea.addView(net);
+
+                // Apps
                 CardView apps = makeCard();
-                LinearLayout aI = makeCardInner();
-                addTitle(aI, "📦 التطبيقات المثبتة");
-                Button ab = new Button(this);
-                ab.setText("عرض التطبيقات");
-                ab.setTextColor(Color.parseColor("#FF6B00"));
-                ab.setTypeface(null, Typeface.BOLD);
-                GradientDrawable apb = new GradientDrawable();
-                apb.setColor(Color.parseColor("#0D0D0D")); apb.setCornerRadius(dp(10));
-                apb.setStroke(dp(1), Color.parseColor("#FF6B00"));
-                ab.setBackground(apb);
-                LinearLayout.LayoutParams aplp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42));
-                ab.setLayoutParams(aplp);
-                aI.addView(ab);
+                LinearLayout ai = makeCardInner();
+                addTitle(ai, "📦 التطبيقات");
+                Button ab = makeBtn("عرض التطبيقات", COLOR_CARD, COLOR_PRIMARY);
+                ab.setBackground(outlineBg());
+                ab.setLayoutParams(new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
+                ai.addView(ab);
 
                 final TextView appOut = new TextView(this);
-                appOut.setTextSize(11); appOut.setTextColor(Color.parseColor("#FFFFFF"));
+                appOut.setTextSize(11); appOut.setTextColor(COLOR_TEXT);
                 appOut.setTypeface(Typeface.MONOSPACE);
                 appOut.setPadding(dp(10), dp(10), dp(10), dp(10));
-                GradientDrawable ao = new GradientDrawable();
-                ao.setColor(Color.parseColor("#0D0D0D")); ao.setCornerRadius(dp(8));
-                ao.setStroke(dp(1), Color.parseColor("#2A2A2A"));
-                appOut.setBackground(ao);
+                appOut.setBackground(monoBg());
                 appOut.setVisibility(View.GONE);
-                aI.addView(appOut);
+                LinearLayout.LayoutParams aolp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                aolp.setMargins(0, dp(10), 0, 0);
+                appOut.setLayoutParams(aolp);
+                ai.addView(appOut);
 
                 ab.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -581,7 +826,7 @@ jobs:
                         sb.append("(").append(apps.size()).append(")\n\n");
                         int c = 0;
                         for (ApplicationInfo app : apps) {
-                            if (c++ > 80) { sb.append("..."); break; }
+                            if (c++ > 50) { sb.append("..."); break; }
                             boolean sys = (app.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
                             sb.append(sys ? "[S] " : "[U] ").append(app.packageName).append("\n");
                         }
@@ -589,28 +834,60 @@ jobs:
                         appOut.setVisibility(View.VISIBLE);
                     }
                 });
-                apps.addView(aI); root.addView(apps);
 
-                // ABOUT
-                CardView abt = makeCard();
-                LinearLayout abI = makeCardInner();
-                addTitle(abI, "ℹ حول");
-                addRow(abI, "النسخة", "2.0 Ultra");
-                addRow(abI, "المطور", "VANTA for WORM");
-                abt.addView(abI); root.addView(abt);
-
-                scroll.addView(root);
-                setContentView(scroll);
-                startLive();
-                refreshShizukuStatus();
+                apps.addView(ai);
+                contentArea.addView(apps);
             }
 
+            // ============== TAB 3: SETTINGS ==============
+            private void buildSettings() {
+                addHeader("⚙ الإعدادات", "المعلومات والخيارات");
+
+                CardView dev = makeCard();
+                LinearLayout di = makeCardInner();
+                addTitle(di, "📱 معلومات الجهاز");
+                DisplayMetrics dm = getResources().getDisplayMetrics();
+                addRow(di, "الطراز", Build.MANUFACTURER + " " + Build.MODEL);
+                addRow(di, "أندرويد", Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
+                addRow(di, "المعمارية", Build.SUPPORTED_ABIS[0]);
+                addRow(di, "DPI", String.valueOf(dm.densityDpi));
+                addRow(di, "الدقة", dm.widthPixels + "×" + dm.heightPixels);
+
+                ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                am.getMemoryInfo(mi);
+                addRow(di, "الرام", (mi.availMem/(1024L*1024L)) + " / " + (mi.totalMem/(1024L*1024L)) + " MB");
+
+                dev.addView(di);
+                contentArea.addView(dev);
+
+                CardView net = makeCard();
+                LinearLayout ni = makeCardInner();
+                addTitle(ni, "◉ الشبكة");
+                TextView info = new TextView(this);
+                info.setTextSize(13); info.setTextColor(COLOR_TEXT);
+                info.setPadding(0, dp(6), 0, 0);
+                fillNet(info);
+                ni.addView(info);
+                net.addView(ni);
+                contentArea.addView(net);
+
+                CardView abt = makeCard();
+                LinearLayout abi = makeCardInner();
+                addTitle(abi, "ℹ حول التطبيق");
+                addRow(abi, "النسخة", "3.0");
+                addRow(abi, "المطور", "VANTA for WORM");
+                addRow(abi, "الحزمة", "com.vanta.pubgtools");
+                abt.addView(abi);
+                contentArea.addView(abt);
+            }
+
+            // ============== SHIZUKU ==============
             private void refreshShizukuStatus() {
                 try {
                     Class<?> clazz = Class.forName("rikka.shizuku.Shizuku");
                     Boolean alive = (Boolean) clazz.getMethod("pingBinder").invoke(null);
                     if (alive != null && alive) {
-                        shizukuStatus.setText("✓ Shizuku شغّال — جاهز للصلاحيات");
+                        shizukuStatus.setText("✓ Shizuku شغّال");
                         shizukuStatus.setTextColor(Color.parseColor("#4CAF50"));
                     } else {
                         shizukuStatus.setText("✗ Shizuku مثبت لكن مو شغّال");
@@ -648,21 +925,30 @@ jobs:
                 }
             }
 
+            // ============== LIVE ==============
             private void startLive() {
                 liveTask = new Runnable() {
                     @Override public void run() {
                         try {
-                            ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
-                            am.getMemoryInfo(mi);
-                            long tot = mi.totalMem / (1024L*1024L);
-                            long av = mi.availMem / (1024L*1024L);
-                            long us = tot - av;
-                            int pct = (int)((us * 100) / tot);
-                            ramLive.setText("🧠 RAM: " + us + " / " + tot + " MB  (" + pct + "%)");
-                            ramBar.setProgress(pct);
-                            int cores = Runtime.getRuntime().availableProcessors();
-                            long heap = Runtime.getRuntime().totalMemory() / (1024L*1024L);
-                            cpuLive.setText("⚙ الأنوية: " + cores + "  ·  JVM: " + heap + " MB");
+                            if (ramLive != null) {
+                                ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
+                                am.getMemoryInfo(mi);
+                                long tot = mi.totalMem / (1024L*1024L);
+                                long av = mi.availMem / (1024L*1024L);
+                                long us = tot - av;
+                                int pct = (int)((us * 100) / tot);
+                                ramLive.setText("🧠 RAM: " + us + " / " + tot + " MB  (" + pct + "%)");
+                            }
+                            if (cpuLive != null) {
+                                int cores = Runtime.getRuntime().availableProcessors();
+                                long heap = Runtime.getRuntime().totalMemory() / (1024L*1024L);
+                                cpuLive.setText("⚙ الأنوية: " + cores + "  ·  JVM: " + heap + " MB");
+                            }
+                            if (volLive != null) {
+                                int vol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                                int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                                volLive.setText("🔊 صوت: " + vol + " / " + max + "  (" + (vol*100/max) + "%)");
+                            }
                         } catch (Throwable ignored) {}
                         h.postDelayed(this, 1000);
                     }
@@ -675,6 +961,33 @@ jobs:
                 if (liveTask != null) h.removeCallbacks(liveTask);
             }
 
+            // ============== UTILS ==============
+            private void addHeader(String title, String sub) {
+                LinearLayout hdr = new LinearLayout(this);
+                hdr.setOrientation(LinearLayout.HORIZONTAL);
+                hdr.setGravity(Gravity.CENTER_VERTICAL);
+                hdr.setPadding(dp(12), dp(14), dp(12), dp(14));
+                GradientDrawable hb = new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                        new int[]{Color.parseColor("#1A0D00"), Color.parseColor("#2A1500")});
+                hb.setCornerRadius(dp(16));
+                hb.setStroke(dp(1), COLOR_PRIMARY);
+                hdr.setBackground(hb);
+
+                LinearLayout ht = new LinearLayout(this);
+                ht.setOrientation(LinearLayout.VERTICAL);
+                TextView t1 = new TextView(this);
+                t1.setText(title); t1.setTextSize(22); t1.setTextColor(COLOR_PRIMARY);
+                t1.setTypeface(null, Typeface.BOLD);
+                ht.addView(t1);
+                TextView t2 = new TextView(this);
+                t2.setText(sub); t2.setTextSize(11); t2.setTextColor(Color.parseColor("#FFA726"));
+                ht.addView(t2);
+                hdr.addView(ht);
+
+                contentArea.addView(hdr);
+                addGap(contentArea, 12);
+            }
+
             private void anim(View v) {
                 ScaleAnimation sa = new ScaleAnimation(1f, 0.95f, 1f, 0.95f,
                         ScaleAnimation.RELATIVE_TO_SELF, 0.5f, ScaleAnimation.RELATIVE_TO_SELF, 0.5f);
@@ -682,102 +995,6 @@ jobs:
                 sa.setRepeatCount(1);
                 sa.setRepeatMode(ScaleAnimation.REVERSE);
                 v.startAnimation(sa);
-            }
-
-            private void cleanMemory(final TextView out) {
-                out.setText("🧹 جارٍ التنظيف...");
-                out.setVisibility(View.VISIBLE);
-                new Thread(new Runnable() { @Override public void run() {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("🧹 تنظيف الذاكرة\n─────────────\n");
-                    ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
-                    am.getMemoryInfo(mi);
-                    long before = mi.availMem / (1024L*1024L);
-                    shOut("am kill-all");
-                    sb.append("✓ إشارة kill-all\n");
-                    System.gc();
-                    try { Thread.sleep(500); } catch (Exception ignored) {}
-                    am.getMemoryInfo(mi);
-                    long after = mi.availMem / (1024L*1024L);
-                    long freed = after - before;
-                    sb.append("─────────────\n");
-                    sb.append("📊 قبل: ").append(before).append(" MB\n");
-                    sb.append("📊 بعد: ").append(after).append(" MB\n");
-                    if (freed > 0) sb.append("✅ حُرّر: ").append(freed).append(" MB");
-                    else sb.append("ℹ️ الذاكرة كانت نظيفة");
-                    final String r = sb.toString();
-                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(r); } });
-                }}).start();
-            }
-
-            private void gameOn(final TextView out) {
-                out.setText("⚡ تفعيل...");
-                out.setVisibility(View.VISIBLE);
-                new Thread(new Runnable() { @Override public void run() {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("⚡ الجيم مود\n─────────────\n");
-                    shOut("settings put global low_power 1");
-                    sb.append("✓ وضع الأداء العالي\n");
-                    shOut("am kill-all");
-                    sb.append("✓ إغلاق التطبيقات الخلفية\n");
-                    shOut("settings put system screen_brightness_mode 0");
-                    sb.append("✓ قفل السطوع\n");
-
-                    // Try DND
-                    try {
-                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-                        if (Build.VERSION.SDK_INT >= 23) {
-                            if (nm.isNotificationPolicyAccessGranted()) {
-                                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
-                                sb.append("✓ كتم الإشعارات (DND)\n");
-                            } else {
-                                sb.append("⚠ امنح صلاحية DND\n");
-                                startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-                            }
-                        }
-                    } catch (Throwable ignored) {}
-
-                    // Restrict background data
-                    shOut("cmd netpolicy set restrict-background true");
-                    sb.append("✓ تقييد إنترنت الخلفية\n");
-
-                    try {
-                        PackageManager pm = getPackageManager();
-                        List<ApplicationInfo> apps = pm.getInstalledApplications(0);
-                        String self = getPackageName();
-                        int stopped = 0;
-                        for (ApplicationInfo app : apps) {
-                            if ((app.flags & ApplicationInfo.FLAG_SYSTEM) != 0) continue;
-                            if (app.packageName.equals(self)) continue;
-                            if (app.packageName.contains("tencent") || app.packageName.contains("pubg")) continue;
-                            shOut("am force-stop " + app.packageName);
-                            stopped++;
-                            if (stopped > 12) break;
-                        }
-                        sb.append("✓ إيقاف ").append(stopped).append(" تطبيق\n");
-                    } catch (Throwable t) { sb.append("⚠ بعض التطبيقات ما توقفت\n"); }
-                    sb.append("─────────────\n🎮 جاهز للعب");
-                    final String r = sb.toString();
-                    runOnUiThread(new Runnable() { @Override public void run() { out.setText(r); } });
-                }}).start();
-            }
-
-            private void gameOff(final TextView out) {
-                new Thread(new Runnable() { @Override public void run() {
-                    shOut("settings put global low_power 0");
-                    shOut("settings put system screen_brightness_mode 1");
-                    shOut("cmd netpolicy set restrict-background false");
-                    try {
-                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-                        if (Build.VERSION.SDK_INT >= 23 && nm.isNotificationPolicyAccessGranted()) {
-                            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
-                        }
-                    } catch (Throwable ignored) {}
-                    final String r = "✓ تم الإيقاف — كل شي رجع طبيعي";
-                    runOnUiThread(new Runnable() { @Override public void run() {
-                        out.setText(r); out.setVisibility(View.VISIBLE);
-                    }});
-                }}).start();
             }
 
             private String shOut(String cmd) {
@@ -821,30 +1038,26 @@ jobs:
                 double df = 450.0 / dpi;
                 StringBuilder sb = new StringBuilder();
                 sb.append("DPI: ").append(dpi).append("\n");
-                sb.append("النمط: ").append(sn).append("\n─────────────\n");
+                sb.append("النمط: ").append(sn).append("\n─────────\n");
                 sb.append("🎯 الكاميرا: ").append(clamp((int)(90*df*sf))).append("\n");
                 sb.append("🎯 ADS: ").append(clamp((int)(55*df*sf))).append("\n");
                 sb.append("🎯 TPP: ").append(clamp((int)(60*df*sf))).append("\n");
                 sb.append("🎯 FPP: ").append(clamp((int)(65*df*sf))).append("\n");
-                sb.append("🎯 الجيروسكوب: ").append(clamp((int)(300*df*sf))).append("\n");
+                sb.append("🎯 الجيروسكوب: ").append(clamp((int)(300*df*sf)));
                 return sb.toString();
             }
             private int clamp(int v) { return Math.max(1, Math.min(300, v)); }
 
-            private void spacer(LinearLayout p, int h) {
-                View v = new View(this);
-                v.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(h)));
-                p.addView(v);
-            }
-
+            // ============== UI HELPERS ==============
             private CardView makeCard() {
                 CardView c = new CardView(this);
-                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+                LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
                 lp.setMargins(0, dp(6), 0, dp(6));
                 c.setLayoutParams(lp);
                 c.setRadius(dp(14));
                 c.setCardElevation(dp(2));
-                c.setCardBackgroundColor(Color.parseColor("#1A1A1A"));
+                c.setCardBackgroundColor(COLOR_CARD);
                 c.setUseCompatPadding(true);
                 return c;
             }
@@ -866,11 +1079,11 @@ jobs:
                 bl.setMargins(0, 0, dp(10), 0);
                 bar.setLayoutParams(bl);
                 GradientDrawable bg = new GradientDrawable();
-                bg.setColor(Color.parseColor("#FF6B00")); bg.setCornerRadius(dp(2));
+                bg.setColor(COLOR_PRIMARY); bg.setCornerRadius(dp(2));
                 bar.setBackground(bg);
                 row.addView(bar);
                 TextView tv = new TextView(this);
-                tv.setText(txt); tv.setTextSize(17); tv.setTextColor(Color.parseColor("#FF6B00"));
+                tv.setText(txt); tv.setTextSize(17); tv.setTextColor(COLOR_PRIMARY);
                 tv.setTypeface(null, Typeface.BOLD);
                 row.addView(tv);
                 p.addView(row);
@@ -881,16 +1094,71 @@ jobs:
                 row.setOrientation(LinearLayout.HORIZONTAL);
                 row.setPadding(0, dp(5), 0, dp(5));
                 TextView kk = new TextView(this);
-                kk.setText(k); kk.setTextSize(13); kk.setTextColor(Color.parseColor("#9E9E9E"));
-                kk.setMinWidth(dp(90)); row.addView(kk);
+                kk.setText(k); kk.setTextSize(13); kk.setTextColor(COLOR_TEXT_DIM);
+                kk.setMinWidth(dp(80));
+                row.addView(kk);
                 TextView sep = new TextView(this);
                 sep.setText(" · "); sep.setTextSize(13); sep.setTextColor(Color.parseColor("#2A2A2A"));
                 row.addView(sep);
                 TextView vv = new TextView(this);
-                vv.setText(v); vv.setTextSize(13); vv.setTextColor(Color.parseColor("#FFFFFF"));
+                vv.setText(v); vv.setTextSize(13); vv.setTextColor(COLOR_TEXT);
                 vv.setTypeface(null, Typeface.BOLD);
                 row.addView(vv);
                 p.addView(row);
+            }
+
+            private Button makeBtn(String text, int bgColor, int textColor) {
+                Button b = new Button(this);
+                b.setText(text); b.setTextColor(textColor);
+                b.setTextSize(14); b.setTypeface(null, Typeface.BOLD);
+                if (bgColor == COLOR_PRIMARY) {
+                    GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                            new int[]{COLOR_PRIMARY, Color.parseColor("#E55A00")});
+                    g.setCornerRadius(dp(10));
+                    b.setBackground(g);
+                } else {
+                    GradientDrawable g = new GradientDrawable();
+                    g.setColor(COLOR_CARD);
+                    g.setCornerRadius(dp(10));
+                    b.setBackground(g);
+                }
+                return b;
+            }
+
+            private GradientDrawable outlineBg() {
+                GradientDrawable g = new GradientDrawable();
+                g.setColor(COLOR_BG);
+                g.setCornerRadius(dp(10));
+                g.setStroke(dp(1), COLOR_PRIMARY);
+                return g;
+            }
+
+            private GradientDrawable inputBg() {
+                GradientDrawable g = new GradientDrawable();
+                g.setColor(COLOR_BG);
+                g.setCornerRadius(dp(8));
+                g.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                return g;
+            }
+
+            private GradientDrawable monoBg() {
+                GradientDrawable g = new GradientDrawable();
+                g.setColor(COLOR_BG);
+                g.setCornerRadius(dp(8));
+                g.setStroke(dp(1), Color.parseColor("#2A2A2A"));
+                return g;
+            }
+
+            private void addGap(LinearLayout p, int h) {
+                View v = new View(this);
+                v.setLayoutParams(new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(h)));
+                p.addView(v);
+            }
+
+            private void addGapH(LinearLayout p, int w) {
+                View v = new View(this);
+                v.setLayoutParams(new LinearLayout.LayoutParams(dp(w), LinearLayout.LayoutParams.MATCH_PARENT));
+                p.addView(v);
             }
         }
         XD

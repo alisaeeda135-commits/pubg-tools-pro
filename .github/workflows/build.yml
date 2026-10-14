@@ -1,4 +1,4 @@
-name: Build APK v6.0
+name: Build APK v6.1
 
 on:
   push:
@@ -25,7 +25,6 @@ jobs:
         mkdir -p app/src/main/aidl/com/vanta/pubgtools
         mkdir -p app/src/main/res/values
         mkdir -p app/src/main/res/drawable
-        mkdir -p app/src/main/res/xml
         mkdir -p app/src/main/res/mipmap-anydpi-v26
         for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do mkdir -p app/src/main/res/mipmap-$d; done
 
@@ -58,15 +57,18 @@ jobs:
                 applicationId "com.vanta.pubgtools"
                 minSdk 24
                 targetSdk 34
-                versionCode 9
-                versionName "6.0"
+                versionCode 10
+                versionName "6.1"
             }
             buildTypes { release { minifyEnabled false } }
             compileOptions {
                 sourceCompatibility JavaVersion.VERSION_17
                 targetCompatibility JavaVersion.VERSION_17
             }
-            buildFeatures { aidl true }
+            buildFeatures {
+                aidl true
+                buildConfig true
+            }
         }
         dependencies {
             implementation 'androidx.appcompat:appcompat:1.6.1'
@@ -118,7 +120,6 @@ jobs:
         </manifest>
         X5
 
-        # ===== AIDL =====
         cat > app/src/main/aidl/com/vanta/pubgtools/IUserService.aidl << 'X6'
         package com.vanta.pubgtools;
 
@@ -130,7 +131,6 @@ jobs:
         }
         X6
 
-        # ===== ICONS =====
         cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'X7'
         <?xml version="1.0" encoding="utf-8"?>
         <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
@@ -174,7 +174,6 @@ jobs:
           cp app/src/main/res/mipmap-$d/ic_launcher.xml app/src/main/res/mipmap-$d/ic_launcher_round.xml
         done
 
-        # ===== COLORS =====
         cat > app/src/main/res/values/colors.xml << 'X11'
         <?xml version="1.0" encoding="utf-8"?>
         <resources>
@@ -205,11 +204,9 @@ jobs:
         </resources>
         X13
 
-        # ===== USER SERVICE (runs in Shizuku process) =====
         cat > app/src/main/java/com/vanta/pubgtools/UserService.java << 'X14'
         package com.vanta.pubgtools;
 
-        import android.os.IBinder;
         import android.os.RemoteException;
         import java.io.BufferedReader;
         import java.io.InputStreamReader;
@@ -242,13 +239,11 @@ jobs:
         }
         X14
 
-        # ===== MAIN ACTIVITY =====
         cat > app/src/main/java/com/vanta/pubgtools/MainActivity.java << 'XD'
         package com.vanta.pubgtools;
 
         import android.app.ActivityManager;
         import android.app.AlertDialog;
-        import android.app.Notification;
         import android.app.NotificationChannel;
         import android.app.NotificationManager;
         import android.content.ClipData;
@@ -263,7 +258,6 @@ jobs:
         import android.content.res.ColorStateList;
         import android.graphics.Color;
         import android.graphics.Typeface;
-        import android.graphics.drawable.Drawable;
         import android.graphics.drawable.GradientDrawable;
         import android.media.AudioManager;
         import android.net.ConnectivityManager;
@@ -289,7 +283,6 @@ jobs:
         import android.widget.ImageView;
         import android.widget.LinearLayout;
         import android.widget.ScrollView;
-        import android.widget.SeekBar;
         import android.widget.Spinner;
         import android.widget.TextView;
         import android.widget.Toast;
@@ -328,23 +321,14 @@ jobs:
             private final int COLOR_TEXT = Color.parseColor("#FFFFFF");
             private final int COLOR_TEXT_DIM = Color.parseColor("#9E9E9E");
 
-            // Shizuku
             private static final int SHIZUKU_PERMISSION_CODE = 1001;
             private IUserService userService = null;
             private boolean isBound = false;
-            private boolean shizukuReady = false;
 
             private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density); }
             private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
 
-            // Shizuku UserService args
-            private final Shizuku.UserServiceArgs userServiceArgs =
-                new Shizuku.UserServiceArgs(
-                    new ComponentName(BuildConfig.APPLICATION_ID, UserService.class.getName()))
-                    .daemon(false)
-                    .processNameSuffix("service")
-                    .debuggable(false)
-                    .version(1);
+            private Shizuku.UserServiceArgs userServiceArgs;
 
             private final ServiceConnection serviceConnection = new ServiceConnection() {
                 @Override public void onServiceConnected(ComponentName name, IBinder binder) {
@@ -353,7 +337,7 @@ jobs:
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
                             refreshShizukuStatus();
-                            toast("Shizuku UserService متصل ✓");
+                            toast("Shizuku UserService متصل");
                         }
                     });
                 }
@@ -368,18 +352,11 @@ jobs:
                     @Override public void onRequestPermissionResult(int requestCode, int grantResult) {
                         if (requestCode == SHIZUKU_PERMISSION_CODE) {
                             if (grantResult == PackageManager.PERMISSION_GRANTED) {
-                                shizukuReady = true;
                                 bindUserService();
                                 runOnUiThread(new Runnable() {
                                     @Override public void run() {
                                         refreshShizukuStatus();
                                         toast("تم منح صلاحيات Shizuku");
-                                    }
-                                });
-                            } else {
-                                runOnUiThread(new Runnable() {
-                                    @Override public void run() {
-                                        toast("تم رفض صلاحيات Shizuku");
                                     }
                                 });
                             }
@@ -426,9 +403,16 @@ jobs:
 
                 setContentView(main);
 
-                // Shizuku setup
-                setupShizuku();
+                try {
+                    userServiceArgs = new Shizuku.UserServiceArgs(
+                        new ComponentName(getPackageName(), UserService.class.getName()))
+                        .daemon(false)
+                        .processNameSuffix("service")
+                        .debuggable(false)
+                        .version(1);
+                } catch (Throwable t) {}
 
+                setupShizuku();
                 buildNav();
                 showTab(0);
                 startLive();
@@ -447,7 +431,6 @@ jobs:
                 try {
                     Shizuku.addRequestPermissionResultListener(permListener);
                     if (Shizuku.pingBinder()) {
-                        shizukuReady = true;
                         if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
                             bindUserService();
                         }
@@ -457,9 +440,10 @@ jobs:
 
             private void bindUserService() {
                 try {
+                    if (userServiceArgs == null) return;
                     Shizuku.bindUserService(userServiceArgs, serviceConnection);
                 } catch (Throwable t) {
-                    toast("فشل ربط UserService: " + t.getMessage());
+                    toast("فشل الربط: " + t.getMessage());
                 }
             }
 
@@ -469,8 +453,7 @@ jobs:
                         toast("Shizuku غير مثبت أو غير شغّال");
                         return;
                     }
-                    if (Shizuku.isPreV11() || Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                        shizukuReady = true;
+                    if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
                         bindUserService();
                         toast("مربوط بالفعل");
                         return;
@@ -492,10 +475,10 @@ jobs:
                     if (isBound && userService != null) {
                         int uid = -1;
                         try { uid = userService.getUid(); } catch (Throwable ignored) {}
-                        shizukuStatus.setText("✓ متصل — UserService يعمل (uid=" + uid + ")");
+                        shizukuStatus.setText("✓ متصل (uid=" + uid + ")");
                         shizukuStatus.setTextColor(Color.parseColor("#4CAF50"));
                     } else if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-                        shizukuStatus.setText("⏳ الصلاحيات ممنوحة — جارٍ الربط...");
+                        shizukuStatus.setText("⏳ الصلاحيات ممنوحة — ربط...");
                         shizukuStatus.setTextColor(COLOR_PRIMARY);
                         bindUserService();
                     } else {
@@ -518,18 +501,10 @@ jobs:
                 }
             }
 
-            // ============== EXEC (via Shizuku UserService) ==============
             private String execCmd(String cmd) {
                 if (isBound && userService != null) {
-                    try {
-                        return userService.exec(cmd);
-                    } catch (RemoteException e) {
-                        return "ERROR: " + e.getMessage();
-                    } catch (Throwable t) {
-                        return "ERROR: " + t.getMessage();
-                    }
+                    try { return userService.exec(cmd); } catch (Throwable t) { return "ERROR: " + t.getMessage(); }
                 }
-                // Fallback: Runtime.exec (no shell perms)
                 try {
                     Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
                     BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
@@ -543,7 +518,6 @@ jobs:
                 } catch (Throwable t) { return ""; }
             }
 
-            // ============== NAV ==============
             private void buildNav() {
                 navBar.removeAllViews();
                 addNavBtn(0, "🏠", "الرئيسية");
@@ -585,9 +559,8 @@ jobs:
                 }
             }
 
-            // ============== TAB 0: HOME ==============
             private void buildHome() {
-                addHeader("PUBG Tools Pro", "v6.0 · Shizuku UserService");
+                addHeader("PUBG Tools Pro", "v6.1 · Shizuku");
 
                 CardView mon = makeCard();
                 LinearLayout mi = makeCardInner();
@@ -651,25 +624,22 @@ jobs:
                     ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
                     am.getMemoryInfo(mi);
                     long before = mi.availMem / (1024L*1024L);
-                    String r = execCmd("am kill-all");
+                    execCmd("am kill-all");
                     System.gc();
                     try { Thread.sleep(500); } catch (Exception ignored) {}
                     am.getMemoryInfo(mi);
                     long after = mi.availMem / (1024L*1024L);
                     long freed = after - before;
-                    String mode = isBound ? "Shizuku ✓" : "بدون Shizuku";
                     final String txt = "🧹 تنظيف\nقبل: " + before + " MB\nبعد: " + after + " MB\n" +
                             (freed > 0 ? "✅ حُرّر: " + freed + " MB" : "ℹ️ نظيفة") +
-                            "\n📡 " + mode;
+                            "\n📡 " + (isBound ? "Shizuku ✓" : "بدون Shizuku");
                     runOnUiThread(new Runnable() { @Override public void run() { out.setText(txt); } });
                 }}).start();
             }
 
-            // ============== TAB 1: GAME ==============
             private void buildGame() {
                 addHeader("🎮 وضع اللعب", "Shizuku UserService");
 
-                // Shizuku status
                 CardView sh = makeCard();
                 LinearLayout shi = makeCardInner();
                 addTitle(shi, "⚡ Shizuku");
@@ -677,7 +647,6 @@ jobs:
                 shizukuStatus.setTextSize(13); shizukuStatus.setTextColor(COLOR_TEXT_DIM);
                 shizukuStatus.setPadding(0, dp(4), 0, dp(8));
                 shi.addView(shizukuStatus);
-
                 Button shBtn = makeBtn("طلب صلاحيات Shizuku", COLOR_PRIMARY, COLOR_TEXT);
                 shBtn.setLayoutParams(new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, dp(46)));
@@ -686,7 +655,6 @@ jobs:
                 });
                 shi.addView(shBtn);
                 addGap(shi, 6);
-
                 Button testBtn = makeBtn("اختبار (id)", COLOR_CARD, COLOR_PRIMARY);
                 testBtn.setBackground(outlineBg());
                 testBtn.setLayoutParams(new LinearLayout.LayoutParams(
@@ -695,17 +663,14 @@ jobs:
                     @Override public void onClick(View v) { testExec(); }
                 });
                 shi.addView(testBtn);
-
                 sh.addView(shi);
                 contentArea.addView(sh);
 
-                // Game Mode
                 CardView gm = makeCard();
                 LinearLayout gmi = makeCardInner();
                 addTitle(gmi, "⚡ الجيم مود");
-
                 TextView gd = new TextView(this);
-                gd.setText("• إغلاق التطبيقات المختارة\n• كتم الإشعارات (الصوت يعمل)\n• قفل السطوع\n• وضع الأداء العالي\n• تقييد إنترنت الخلفية");
+                gd.setText("• إغلاق التطبيقات المختارة\n• كتم الإشعارات\n• قفل السطوع\n• وضع الأداء\n• تقييد الإنترنت");
                 gd.setTextSize(12); gd.setTextColor(COLOR_TEXT_DIM);
                 gd.setPadding(0, dp(4), 0, dp(10));
                 gmi.addView(gd);
@@ -740,7 +705,6 @@ jobs:
                 gm.addView(gmi);
                 contentArea.addView(gm);
 
-                // App Selector
                 CardView appSel = makeCard();
                 LinearLayout asi = makeCardInner();
                 addTitle(asi, "📋 اختيار التطبيقات للإيقاف");
@@ -765,8 +729,7 @@ jobs:
             private void testExec() {
                 new Thread(new Runnable() { @Override public void run() {
                     String id = execCmd("id");
-                    String android = execCmd("getprop ro.build.version.release");
-                    final String msg = "id: " + id.trim() + "\n\nAndroid: " + android.trim();
+                    final String msg = "id: " + id.trim() + "\n\nisBound: " + isBound;
                     runOnUiThread(new Runnable() { @Override public void run() {
                         new AlertDialog.Builder(MainActivity.this)
                                 .setTitle("نتيجة الاختبار")
@@ -798,7 +761,6 @@ jobs:
                 ll.setOrientation(LinearLayout.VERTICAL);
                 ll.setPadding(dp(16), dp(16), dp(16), dp(16));
                 ll.setBackgroundColor(COLOR_BG);
-
                 TextView title = new TextView(this);
                 title.setText("اختر التطبيقات (" + userApps.size() + "):");
                 title.setTextSize(16); title.setTextColor(COLOR_PRIMARY);
@@ -851,7 +813,6 @@ jobs:
                     row.setOnClickListener(new View.OnClickListener() {
                         @Override public void onClick(View v) { cb.toggle(); }
                     });
-
                     ll.addView(row);
                 }
 
@@ -860,7 +821,6 @@ jobs:
                         LinearLayout.LayoutParams.MATCH_PARENT, dp(50)));
                 ll.addView(save);
                 sv.addView(ll);
-
                 final AlertDialog dlg = new AlertDialog.Builder(this).setView(sv).create();
                 save.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
@@ -881,49 +841,28 @@ jobs:
                 if (out == null) return;
                 out.setText("⚡ تفعيل...");
                 out.setVisibility(View.VISIBLE);
-
                 new Thread(new Runnable() { @Override public void run() {
                     StringBuilder sb = new StringBuilder();
                     sb.append("⚡ الجيم مود\n────────\n");
-                    sb.append(isBound ? "✓ Shizuku UserService نشط\n" : "⚠ بدون Shizuku\n");
-
-                    String r1 = execCmd("settings put global low_power 1");
-                    sb.append(checkOut(r1, "أداء عالي"));
-
-                    String r2 = execCmd("am kill-all");
-                    sb.append(checkOut(r2, "kill-all"));
-
-                    String r3 = execCmd("settings put system screen_brightness_mode 0");
-                    sb.append(checkOut(r3, "قفل السطوع"));
-
+                    sb.append(isBound ? "✓ Shizuku نشط\n" : "⚠ بدون Shizuku\n");
+                    sb.append(checkOut(execCmd("settings put global low_power 1"), "أداء عالي"));
+                    sb.append(checkOut(execCmd("am kill-all"), "kill-all"));
+                    sb.append(checkOut(execCmd("settings put system screen_brightness_mode 0"), "قفل سطوع"));
                     try {
                         NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-                        if (Build.VERSION.SDK_INT >= 23) {
-                            if (nm.isNotificationPolicyAccessGranted()) {
-                                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS);
-                                sb.append("✓ كتم الإشعارات (الصوت يعمل)\n");
-                            } else {
-                                sb.append("⚠ امنح صلاحية DND\n");
-                                runOnUiThread(new Runnable() { @Override public void run() {
-                                    startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
-                                }});
-                            }
+                        if (Build.VERSION.SDK_INT >= 23 && nm.isNotificationPolicyAccessGranted()) {
+                            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALARMS);
+                            sb.append("✓ كتم إشعارات\n");
                         }
                     } catch (Throwable ignored) {}
-
                     try {
                         int max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
                         audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, (max*3)/4, 0);
                         sb.append("✓ صوت 75%\n");
                     } catch (Throwable ignored) {}
-
-                    String r4 = execCmd("cmd netpolicy set restrict-background true");
-                    sb.append(checkOut(r4, "تقييد إنترنت"));
-
+                    sb.append(checkOut(execCmd("cmd netpolicy set restrict-background true"), "تقييد إنترنت"));
                     Set<String> selected = prefs.getStringSet("kill_apps", new HashSet<String>());
-                    if (selected.isEmpty()) {
-                        sb.append("ℹ اختر تطبيقات من القائمة\n");
-                    } else {
+                    if (!selected.isEmpty()) {
                         int ok = 0, fail = 0;
                         for (String pkg : selected) {
                             if (pkg.equals(getPackageName())) continue;
@@ -931,12 +870,11 @@ jobs:
                             if (r == null || (!r.toLowerCase().contains("error") && !r.toLowerCase().contains("exception"))) ok++;
                             else fail++;
                         }
-                        sb.append("✓ أوقف ").append(ok).append(" تطبيق");
+                        sb.append("✓ أوقف ").append(ok);
                         if (fail > 0) sb.append(" (").append(fail).append(" فشل)");
                         sb.append("\n");
                     }
                     sb.append("────────\n🎮 جاهز");
-
                     final String r = sb.toString();
                     runOnUiThread(new Runnable() { @Override public void run() { out.setText(r); } });
                 }}).start();
@@ -946,7 +884,7 @@ jobs:
                 if (r == null) return "✗ " + label + "\n";
                 String low = r.toLowerCase();
                 if (low.contains("error") || low.contains("exception") ||
-                    low.contains("denied") || low.contains("not found") || low.contains("permission")) {
+                    low.contains("denied") || low.contains("not found")) {
                     return "✗ " + label + "\n";
                 }
                 return "✓ " + label + "\n";
@@ -971,7 +909,6 @@ jobs:
                 }}).start();
             }
 
-            // ============== TAB 2: TOOLS ==============
             private void buildTools() {
                 addHeader("🛠 الأدوات", "كل ما تحتاجه");
 
@@ -990,7 +927,6 @@ jobs:
                 dlp.setMargins(0, dp(6), 0, dp(10));
                 dpiIn.setLayoutParams(dlp);
                 si.addView(dpiIn);
-
                 final Spinner sp = new Spinner(this);
                 String[] styles = {"2 أصابع", "3 أصابع", "4 أصابع", "5 أصابع", "جيروسكوب"};
                 ArrayAdapter<String> ad = new ArrayAdapter<>(this,
@@ -1001,12 +937,10 @@ jobs:
                 slp.setMargins(0, 0, 0, dp(10));
                 sp.setLayoutParams(slp);
                 si.addView(sp);
-
                 Button calc = makeBtn("احسب", COLOR_PRIMARY, COLOR_TEXT);
                 calc.setLayoutParams(new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, dp(46)));
                 si.addView(calc);
-
                 final TextView resOut = new TextView(this);
                 resOut.setTextSize(13); resOut.setTextColor(COLOR_TEXT);
                 resOut.setTypeface(Typeface.MONOSPACE);
@@ -1018,14 +952,12 @@ jobs:
                 rolp.setMargins(0, dp(10), 0, 0);
                 resOut.setLayoutParams(rolp);
                 si.addView(resOut);
-
                 final Button copyBtn = makeBtn("📋 نسخ", COLOR_CARD, COLOR_PRIMARY);
                 copyBtn.setBackground(outlineBg());
                 copyBtn.setLayoutParams(new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, dp(42)));
                 copyBtn.setVisibility(View.GONE);
                 si.addView(copyBtn);
-
                 calc.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) {
                         try {
@@ -1083,7 +1015,7 @@ jobs:
                         pingOut.setText("جارٍ...");
                         pingOut.setVisibility(View.VISIBLE);
                         new Thread(new Runnable() { @Override public void run() {
-                            final String r = doPing(host);
+                            final String r = execCmd("ping -c 4 " + host);
                             runOnUiThread(new Runnable() { @Override public void run() { pingOut.setText(r); } });
                         }}).start();
                     }
@@ -1092,19 +1024,6 @@ jobs:
                 contentArea.addView(net);
             }
 
-            private String doPing(String host) {
-                try {
-                    Process p = Runtime.getRuntime().exec(new String[]{"ping", "-c", "4", host});
-                    BufferedReader r = new BufferedReader(new InputStreamReader(p.getInputStream()));
-                    StringBuilder sb = new StringBuilder();
-                    String l;
-                    while ((l = r.readLine()) != null) sb.append(l).append("\n");
-                    p.waitFor();
-                    return sb.toString();
-                } catch (Throwable t) { return "فشل: " + t.getMessage(); }
-            }
-
-            // ============== TAB 3: SETTINGS ==============
             private void buildSettings() {
                 addHeader("⚙ الإعدادات", "المعلومات والخيارات");
 
@@ -1151,7 +1070,7 @@ jobs:
                 CardView abt = makeCard();
                 LinearLayout abi = makeCardInner();
                 addTitle(abi, "ℹ حول التطبيق");
-                addRow(abi, "النسخة", "6.0 UserService");
+                addRow(abi, "النسخة", "6.1");
                 addRow(abi, "المطور", "VANTA for WORM");
                 abt.addView(abi);
                 contentArea.addView(abt);
@@ -1176,7 +1095,6 @@ jobs:
                 parent.addView(b);
             }
 
-            // ============== LIVE ==============
             private void startLive() {
                 liveTask = new Runnable() {
                     @Override public void run() {
@@ -1210,15 +1128,10 @@ jobs:
             @Override protected void onDestroy() {
                 super.onDestroy();
                 if (liveTask != null) h.removeCallbacks(liveTask);
-                try {
-                    Shizuku.removeRequestPermissionResultListener(permListener);
-                } catch (Throwable ignored) {}
-                try {
-                    if (isBound) Shizuku.unbindUserService(userServiceArgs, serviceConnection, true);
-                } catch (Throwable ignored) {}
+                try { Shizuku.removeRequestPermissionResultListener(permListener); } catch (Throwable ignored) {}
+                try { if (isBound && userServiceArgs != null) Shizuku.unbindUserService(userServiceArgs, serviceConnection, true); } catch (Throwable ignored) {}
             }
 
-            // ============== UTILS ==============
             private void fillNet(TextView tv) {
                 try {
                     ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -1389,7 +1302,6 @@ jobs:
                 hb.setCornerRadius(dp(16));
                 hb.setStroke(dp(1), COLOR_PRIMARY);
                 hdr.setBackground(hb);
-
                 LinearLayout ht = new LinearLayout(this);
                 ht.setOrientation(LinearLayout.VERTICAL);
                 TextView t1 = new TextView(this);
@@ -1400,30 +1312,22 @@ jobs:
                 t2.setText(sub); t2.setTextSize(11); t2.setTextColor(lighten(COLOR_PRIMARY, 0.3f));
                 ht.addView(t2);
                 hdr.addView(ht);
-
                 contentArea.addView(hdr);
                 addGap(contentArea, 12);
             }
 
             private int darken(int color, float factor) {
-                int r = (int)(Color.red(color) * factor);
-                int g = (int)(Color.green(color) * factor);
-                int b = (int)(Color.blue(color) * factor);
-                return Color.rgb(r, g, b);
+                return Color.rgb((int)(Color.red(color)*factor),
+                        (int)(Color.green(color)*factor),
+                        (int)(Color.blue(color)*factor));
             }
-
             private int lighten(int color, float add) {
-                int r = Math.min(255, (int)(Color.red(color) + 255*add));
-                int g = Math.min(255, (int)(Color.green(color) + 255*add));
-                int b = Math.min(255, (int)(Color.blue(color) + 255*add));
-                return Color.rgb(r, g, b);
+                return Color.rgb(Math.min(255,(int)(Color.red(color)+255*add)),
+                        Math.min(255,(int)(Color.green(color)+255*add)),
+                        Math.min(255,(int)(Color.blue(color)+255*add)));
             }
         }
         XD
-
-        # ===== BUILDCONFIG =====
-        # إضافة BuildConfig افتراضيًا في build.gradle — Android يفعّلها تلقائيًا
-        echo "buildConfig = true" >> /tmp/placeholder
 
         echo "=== DONE ==="
         find . -type f -not -path './.git/*' | sort

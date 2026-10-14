@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK v2.0
 
 on:
   push:
@@ -56,8 +56,8 @@ jobs:
                 applicationId "com.vanta.pubgtools"
                 minSdk 24
                 targetSdk 34
-                versionCode 1
-                versionName "1.0"
+                versionCode 2
+                versionName "2.0"
             }
             buildTypes { release { minifyEnabled false } }
             compileOptions {
@@ -69,16 +69,22 @@ jobs:
             implementation 'androidx.appcompat:appcompat:1.6.1'
             implementation 'com.google.android.material:material:1.11.0'
             implementation 'androidx.cardview:cardview:1.0.0'
+            implementation 'dev.rikka.shizuku:api:13.1.5'
+            implementation 'dev.rikka.shizuku:provider:13.1.5'
         }
         X4
 
         cat > app/src/main/AndroidManifest.xml << 'X5'
         <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+        <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+            xmlns:tools="http://schemas.android.com/tools">
             <uses-permission android:name="android.permission.INTERNET" />
             <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
             <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
             <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+            <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+            <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
+                tools:ignore="QueryAllPackagesPermission" />
             <application
                 android:allowBackup="true"
                 android:icon="@mipmap/ic_launcher"
@@ -91,6 +97,13 @@ jobs:
                         <category android:name="android.intent.category.LAUNCHER" />
                     </intent-filter>
                 </activity>
+                <provider
+                    android:name="rikka.shizuku.ShizukuProvider"
+                    android:authorities="${applicationId}.shizuku"
+                    android:enabled="true"
+                    android:exported="true"
+                    android:multiprocess="false"
+                    android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
             </application>
         </manifest>
         X5
@@ -172,9 +185,11 @@ jobs:
         package com.vanta.pubgtools;
 
         import android.app.ActivityManager;
+        import android.app.NotificationManager;
         import android.content.ClipData;
         import android.content.ClipboardManager;
         import android.content.Context;
+        import android.content.Intent;
         import android.content.pm.ApplicationInfo;
         import android.content.pm.PackageManager;
         import android.graphics.Color;
@@ -186,10 +201,9 @@ jobs:
         import android.net.wifi.WifiManager;
         import android.os.Build;
         import android.os.Bundle;
-        import android.os.Environment;
         import android.os.Handler;
         import android.os.Looper;
-        import android.os.StatFs;
+        import android.provider.Settings;
         import android.text.InputType;
         import android.util.DisplayMetrics;
         import android.view.Gravity;
@@ -213,8 +227,7 @@ jobs:
 
         public class MainActivity extends AppCompatActivity {
 
-            private TextView ramLive;
-            private TextView cpuLive;
+            private TextView ramLive, cpuLive, shizukuStatus;
             private ProgressBar ramBar;
             private Handler h = new Handler(Looper.getMainLooper());
             private Runnable liveTask;
@@ -254,7 +267,7 @@ jobs:
                 t1.setText("PUBG Tools Pro"); t1.setTextSize(24); t1.setTextColor(Color.parseColor("#FF6B00"));
                 t1.setTypeface(null, Typeface.BOLD); ht.addView(t1);
                 TextView t2 = new TextView(this);
-                t2.setText("v1.0 · Gaming Edition"); t2.setTextSize(11); t2.setTextColor(Color.parseColor("#FFA726"));
+                t2.setText("v2.0 · Ultra Edition"); t2.setTextSize(11); t2.setTextColor(Color.parseColor("#FFA726"));
                 ht.addView(t2);
                 hdr.addView(ht);
                 root.addView(hdr);
@@ -262,6 +275,35 @@ jobs:
 
                 DisplayMetrics dm = getResources().getDisplayMetrics();
                 int dpi = dm.densityDpi;
+
+                // SHIZUKU STATUS CARD
+                CardView shCard = makeCard();
+                LinearLayout shI = makeCardInner();
+                addTitle(shI, "⚡ Shizuku");
+
+                shizukuStatus = new TextView(this);
+                shizukuStatus.setTextSize(13);
+                shizukuStatus.setTextColor(Color.parseColor("#9E9E9E"));
+                shizukuStatus.setPadding(0, dp(4), 0, dp(8));
+                shI.addView(shizukuStatus);
+
+                Button shBtn = new Button(this);
+                shBtn.setText("طلب صلاحيات Shizuku");
+                shBtn.setTextColor(Color.parseColor("#FFFFFF"));
+                shBtn.setTextSize(14); shBtn.setTypeface(null, Typeface.BOLD);
+                GradientDrawable shb = new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                        new int[]{Color.parseColor("#FF6B00"), Color.parseColor("#E55A00")});
+                shb.setCornerRadius(dp(10));
+                shBtn.setBackground(shb);
+                LinearLayout.LayoutParams shlp = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(46));
+                shlp.setMargins(0, 0, 0, dp(6)); shBtn.setLayoutParams(shlp);
+                shI.addView(shBtn);
+
+                shBtn.setOnClickListener(new View.OnClickListener() {
+                    @Override public void onClick(View v) { requestShizuku(); }
+                });
+
+                shCard.addView(shI); root.addView(shCard);
 
                 // LIVE MONITOR
                 CardView mon = makeCard();
@@ -306,20 +348,17 @@ jobs:
                 cleanOut.setBackground(co);
                 cleanOut.setVisibility(View.GONE);
                 monI.addView(cleanOut);
-
                 clean.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) { anim(v); cleanMemory(cleanOut); }
                 });
-
                 mon.addView(monI); root.addView(mon);
 
                 // GAME MODE
                 CardView gm = makeCard();
                 LinearLayout gmI = makeCardInner();
                 addTitle(gmI, "🎮 وضع الجيم الاحترافي");
-
                 TextView gmDesc = new TextView(this);
-                gmDesc.setText("إغلاق التطبيقات · كتم الإشعارات · قفل السطوع · وضع الأداء");
+                gmDesc.setText("إغلاق التطبيقات · كتم الإشعارات · قفل السطوع · وضع الأداء · تقييد إنترنت الخلفية");
                 gmDesc.setTextSize(12); gmDesc.setTextColor(Color.parseColor("#9E9E9E"));
                 gmDesc.setPadding(0, dp(4), 0, dp(10));
                 gmI.addView(gmDesc);
@@ -358,21 +397,18 @@ jobs:
                 gmOut.setBackground(gmo);
                 gmOut.setVisibility(View.GONE);
                 gmI.addView(gmOut);
-
                 gmOn.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) { anim(v); gameOn(gmOut); }
                 });
                 gmOff.setOnClickListener(new View.OnClickListener() {
                     @Override public void onClick(View v) { gameOff(gmOut); }
                 });
-
                 gm.addView(gmI); root.addView(gm);
 
                 // SENSITIVITY
                 CardView sens = makeCard();
                 LinearLayout sI = makeCardInner();
                 addTitle(sI, "◎ حاسبة الحساسية");
-
                 final EditText dpiIn = new EditText(this);
                 dpiIn.setInputType(InputType.TYPE_CLASS_NUMBER);
                 dpiIn.setText(String.valueOf(dpi));
@@ -559,13 +595,57 @@ jobs:
                 CardView abt = makeCard();
                 LinearLayout abI = makeCardInner();
                 addTitle(abI, "ℹ حول");
-                addRow(abI, "النسخة", "1.0");
+                addRow(abI, "النسخة", "2.0 Ultra");
                 addRow(abI, "المطور", "VANTA for WORM");
                 abt.addView(abI); root.addView(abt);
 
                 scroll.addView(root);
                 setContentView(scroll);
                 startLive();
+                refreshShizukuStatus();
+            }
+
+            private void refreshShizukuStatus() {
+                try {
+                    Class<?> clazz = Class.forName("rikka.shizuku.Shizuku");
+                    Boolean alive = (Boolean) clazz.getMethod("pingBinder").invoke(null);
+                    if (alive != null && alive) {
+                        shizukuStatus.setText("✓ Shizuku شغّال — جاهز للصلاحيات");
+                        shizukuStatus.setTextColor(Color.parseColor("#4CAF50"));
+                    } else {
+                        shizukuStatus.setText("✗ Shizuku مثبت لكن مو شغّال");
+                        shizukuStatus.setTextColor(Color.parseColor("#F44336"));
+                    }
+                } catch (Throwable t) {
+                    shizukuStatus.setText("Shizuku غير مثبت");
+                    shizukuStatus.setTextColor(Color.parseColor("#F44336"));
+                }
+            }
+
+            private void requestShizuku() {
+                try {
+                    Class<?> sc = Class.forName("rikka.shizuku.Shizuku");
+                    Class<?> lc = Class.forName("rikka.shizuku.Shizuku$OnRequestPermissionResultListener");
+                    Object listener = java.lang.reflect.Proxy.newProxyInstance(
+                            lc.getClassLoader(), new Class[]{lc},
+                            new java.lang.reflect.InvocationHandler() {
+                                @Override public Object invoke(Object proxy, java.lang.reflect.Method m, Object[] args) {
+                                    runOnUiThread(new Runnable() {
+                                        @Override public void run() {
+                                            refreshShizukuStatus();
+                                            toast("تم تفعيل Shizuku");
+                                        }
+                                    });
+                                    return null;
+                                }
+                            });
+                    sc.getMethod("addRequestPermissionResultListener", lc).invoke(null, listener);
+                    sc.getMethod("requestPermission", int.class).invoke(null, 0);
+                    toast("في انتظار الموافقة");
+                } catch (Throwable t) {
+                    toast("Shizuku غير مثبت");
+                    refreshShizukuStatus();
+                }
             }
 
             private void startLive() {
@@ -642,6 +722,25 @@ jobs:
                     sb.append("✓ إغلاق التطبيقات الخلفية\n");
                     shOut("settings put system screen_brightness_mode 0");
                     sb.append("✓ قفل السطوع\n");
+
+                    // Try DND
+                    try {
+                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                        if (Build.VERSION.SDK_INT >= 23) {
+                            if (nm.isNotificationPolicyAccessGranted()) {
+                                nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_NONE);
+                                sb.append("✓ كتم الإشعارات (DND)\n");
+                            } else {
+                                sb.append("⚠ امنح صلاحية DND\n");
+                                startActivity(new Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS));
+                            }
+                        }
+                    } catch (Throwable ignored) {}
+
+                    // Restrict background data
+                    shOut("cmd netpolicy set restrict-background true");
+                    sb.append("✓ تقييد إنترنت الخلفية\n");
+
                     try {
                         PackageManager pm = getPackageManager();
                         List<ApplicationInfo> apps = pm.getInstalledApplications(0);
@@ -667,7 +766,14 @@ jobs:
                 new Thread(new Runnable() { @Override public void run() {
                     shOut("settings put global low_power 0");
                     shOut("settings put system screen_brightness_mode 1");
-                    final String r = "✓ تم الإيقاف";
+                    shOut("cmd netpolicy set restrict-background false");
+                    try {
+                        NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                        if (Build.VERSION.SDK_INT >= 23 && nm.isNotificationPolicyAccessGranted()) {
+                            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL);
+                        }
+                    } catch (Throwable ignored) {}
+                    final String r = "✓ تم الإيقاف — كل شي رجع طبيعي";
                     runOnUiThread(new Runnable() { @Override public void run() {
                         out.setText(r); out.setVisibility(View.VISIBLE);
                     }});
@@ -795,7 +901,7 @@ jobs:
     - name: Build APK
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        gradle assembleDebug --no-daemon 2>&1 | tail -60
+        gradle assembleDebug --no-daemon 2>&1 | tail -80
 
     - name: Upload APK
       if: always()

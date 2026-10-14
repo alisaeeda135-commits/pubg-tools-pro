@@ -1,4 +1,4 @@
-name: Build APK v6.1
+name: Build APK v6.2
 
 on:
   push:
@@ -57,8 +57,8 @@ jobs:
                 applicationId "com.vanta.pubgtools"
                 minSdk 24
                 targetSdk 34
-                versionCode 10
-                versionName "6.1"
+                versionCode 11
+                versionName "6.2"
             }
             buildTypes { release { minifyEnabled false } }
             compileOptions {
@@ -67,7 +67,6 @@ jobs:
             }
             buildFeatures {
                 aidl true
-                buildConfig true
             }
         }
         dependencies {
@@ -127,7 +126,6 @@ jobs:
             String exec(String command);
             int getUid();
             void destroy() = 16777114;
-            void exit() = 1;
         }
         X6
 
@@ -269,7 +267,6 @@ jobs:
         import android.os.Handler;
         import android.os.IBinder;
         import android.os.Looper;
-        import android.os.RemoteException;
         import android.provider.Settings;
         import android.text.InputType;
         import android.util.DisplayMetrics;
@@ -324,11 +321,10 @@ jobs:
             private static final int SHIZUKU_PERMISSION_CODE = 1001;
             private IUserService userService = null;
             private boolean isBound = false;
+            private Shizuku.UserServiceArgs userServiceArgs = null;
 
             private int dp(float v) { return (int)(v * getResources().getDisplayMetrics().density); }
             private void toast(String s) { Toast.makeText(this, s, Toast.LENGTH_SHORT).show(); }
-
-            private Shizuku.UserServiceArgs userServiceArgs;
 
             private final ServiceConnection serviceConnection = new ServiceConnection() {
                 @Override public void onServiceConnected(ComponentName name, IBinder binder) {
@@ -337,7 +333,7 @@ jobs:
                     runOnUiThread(new Runnable() {
                         @Override public void run() {
                             refreshShizukuStatus();
-                            toast("Shizuku UserService متصل");
+                            toast("Shizuku UserService متصل ✓");
                         }
                     });
                 }
@@ -403,6 +399,7 @@ jobs:
 
                 setContentView(main);
 
+                // Shizuku UserServiceArgs
                 try {
                     userServiceArgs = new Shizuku.UserServiceArgs(
                         new ComponentName(getPackageName(), UserService.class.getName()))
@@ -410,7 +407,7 @@ jobs:
                         .processNameSuffix("service")
                         .debuggable(false)
                         .version(1);
-                } catch (Throwable t) {}
+                } catch (Throwable ignored) {}
 
                 setupShizuku();
                 buildNav();
@@ -560,7 +557,7 @@ jobs:
             }
 
             private void buildHome() {
-                addHeader("PUBG Tools Pro", "v6.1 · Shizuku");
+                addHeader("PUBG Tools Pro", "v6.2 · Shizuku + AIDL");
 
                 CardView mon = makeCard();
                 LinearLayout mi = makeCardInner();
@@ -674,7 +671,6 @@ jobs:
                 gd.setTextSize(12); gd.setTextColor(COLOR_TEXT_DIM);
                 gd.setPadding(0, dp(4), 0, dp(10));
                 gmi.addView(gd);
-
                 Button on = makeBtn("⚡ تفعيل الجيم مود", COLOR_PRIMARY, COLOR_TEXT);
                 on.setLayoutParams(new LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT, dp(52)));
@@ -683,7 +679,6 @@ jobs:
                 });
                 gmi.addView(on);
                 addGap(gmi, 6);
-
                 Button off = makeBtn("إيقاف الجيم مود", COLOR_CARD, COLOR_PRIMARY);
                 off.setBackground(outlineBg());
                 off.setLayoutParams(new LinearLayout.LayoutParams(
@@ -693,7 +688,6 @@ jobs:
                 });
                 gmi.addView(off);
                 addGap(gmi, 8);
-
                 final TextView out = new TextView(this);
                 out.setTextSize(11); out.setTextColor(COLOR_TEXT);
                 out.setTypeface(Typeface.MONOSPACE);
@@ -729,7 +723,8 @@ jobs:
             private void testExec() {
                 new Thread(new Runnable() { @Override public void run() {
                     String id = execCmd("id");
-                    final String msg = "id: " + id.trim() + "\n\nisBound: " + isBound;
+                    final String msg = "id: " + id.trim() + "\n\nisBound: " + isBound +
+                            "\nShizuku: " + (userService != null ? "UserService ✓" : "غير مربوط");
                     runOnUiThread(new Runnable() { @Override public void run() {
                         new AlertDialog.Builder(MainActivity.this)
                                 .setTitle("نتيجة الاختبار")
@@ -1070,7 +1065,7 @@ jobs:
                 CardView abt = makeCard();
                 LinearLayout abi = makeCardInner();
                 addTitle(abi, "ℹ حول التطبيق");
-                addRow(abi, "النسخة", "6.1");
+                addRow(abi, "النسخة", "6.2");
                 addRow(abi, "المطور", "VANTA for WORM");
                 abt.addView(abi);
                 contentArea.addView(abt);
@@ -1335,7 +1330,13 @@ jobs:
     - name: Build APK
       run: |
         echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-        gradle assembleDebug --no-daemon 2>&1 | tail -100
+        gradle assembleDebug --no-daemon 2>&1 | tee build.log | tail -100
+        echo ""
+        echo "=== CHECK FOR APK ==="
+        find . -name "*.apk" -type f
+        echo ""
+        echo "=== BUILD LOG TAIL ==="
+        tail -50 build.log
 
     - name: Upload APK
       if: always()
